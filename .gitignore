@@ -1,0 +1,21 @@
+# Gradle
+build/
+.gradle/
+buildSrc/build/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Signing keys - NEVER commit
+*.asc
+secring.gpg
+signing-key.*
