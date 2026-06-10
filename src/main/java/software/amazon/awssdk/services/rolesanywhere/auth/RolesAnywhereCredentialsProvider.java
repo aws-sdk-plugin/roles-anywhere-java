@@ -3,6 +3,7 @@ package software.amazon.awssdk.services.rolesanywhere.auth;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -435,7 +436,7 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
                             + "' scheme. HTTPS is strongly recommended to protect "
                             + "certificate and credential data in transit. "
                             + "The signed request and AWS credentials response will be "
-                            + "sent in plaintext over " + scheme.toUpperCase() + ".");
+                            + "sent in plaintext over " + scheme.toUpperCase(Locale.ROOT) + ".");
                 }
             }
             return this;
@@ -548,7 +549,7 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
             }
             if (!minRefreshInterval.isZero() && minRefreshInterval.compareTo(MIN_REFRESH_INTERVAL_FLOOR) < 0) {
                 throw new IllegalArgumentException("minRefreshInterval cannot be less than "
-                        + MIN_REFRESH_INTERVAL_FLOOR.getSeconds() + " seconds"
+                        + MIN_REFRESH_INTERVAL_FLOOR.toSeconds() + " seconds"
                         + " (use Duration.ZERO to disable throttling)");
             }
             this.minRefreshInterval = minRefreshInterval;

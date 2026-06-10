@@ -127,7 +127,8 @@ final class CreateSessionRequestUtils {
 
         String finalMessage;
         if (statusCodeMessages.containsKey(statusCode)) {
-            String prefix = statusCodeMessages.get(statusCode).split(":")[0] + ":";
+            String msg = statusCodeMessages.get(statusCode);
+            String prefix = msg.substring(0, msg.indexOf(':') + 1);
             if (errorMessage.isEmpty()) {
                 finalMessage = statusCodeMessages.get(statusCode);
             } else {

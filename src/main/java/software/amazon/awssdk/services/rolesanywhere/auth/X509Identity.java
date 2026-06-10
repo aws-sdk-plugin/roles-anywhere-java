@@ -1,7 +1,9 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
@@ -13,6 +15,10 @@ import software.amazon.awssdk.identity.spi.Identity;
  * This class encapsulates an X.509 certificate, its corresponding private key,
  * and an optional certificate chain for trust validation.
  */
+@SuppressFBWarnings(
+        value = "EI_EXPOSE_REP",
+        justification = "X509Certificate is an abstract type with no copy constructor; callers are expected"
+                + " to treat X509Identity as a short-lived signing context, not a long-lived data store")
 public record X509Identity(
         X509Certificate certificate, PrivateKey privateKey, Collection<X509Certificate> certificateChain)
         implements Identity {
@@ -44,7 +50,8 @@ public record X509Identity(
             X509Certificate certificate, PrivateKey privateKey, Collection<X509Certificate> certificateChain) {
         this.certificate = certificate;
         this.privateKey = privateKey;
-        this.certificateChain = Objects.requireNonNullElse(certificateChain, Collections.emptyList());
+        this.certificateChain = Collections.unmodifiableList(
+                new ArrayList<>(Objects.requireNonNullElse(certificateChain, Collections.emptyList())));
     }
 
     /**

@@ -111,7 +111,8 @@ public final class X509Signer implements HttpSigner<X509Identity> {
             version = "unknown";
         }
 
-        String javaVersion = "java" + System.getProperty("java.version").split("\\.")[0];
+        String ver = System.getProperty("java.version");
+        String javaVersion = "java" + ver.substring(0, ver.indexOf('.') < 0 ? ver.length() : ver.indexOf('.'));
         String osName = System.getProperty("os.name").toLowerCase(Locale.ROOT).replace(" ", "");
         String osVersion = System.getProperty("os.version");
         String arch = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
@@ -386,7 +387,7 @@ public final class X509Signer implements HttpSigner<X509Identity> {
                     }
                 }
                 final String encodedParameters = URLEncodedUtils.format(nameValuePairs, StandardCharsets.UTF_8);
-                return BinaryUtils.toHex(digest.digest((encodedParameters.getBytes(StandardCharsets.UTF_8))));
+                return BinaryUtils.toHex(digest.digest(encodedParameters.getBytes(StandardCharsets.UTF_8)));
             }
 
             // Use payload directly from SignRequest if available

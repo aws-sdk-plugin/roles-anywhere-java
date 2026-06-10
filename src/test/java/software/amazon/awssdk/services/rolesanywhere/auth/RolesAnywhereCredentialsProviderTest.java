@@ -61,9 +61,10 @@ public class RolesAnywhereCredentialsProviderTest {
         X509Certificate certificate = mock(X509Certificate.class);
         when(certificate.getSubjectX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
         when(certificate.getIssuerX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
-        when(certificate.getNotBefore()).thenReturn(new java.util.Date());
+        when(certificate.getNotBefore()).thenReturn(java.util.Date.from(Instant.now()));
         long certNotAfter = 365L * 24 * 60 * 60 * 1000;
-        when(certificate.getNotAfter()).thenReturn(new java.util.Date(System.currentTimeMillis() + certNotAfter));
+        when(certificate.getNotAfter())
+                .thenReturn(java.util.Date.from(Instant.now().plusMillis(certNotAfter)));
         when(certificate.getSerialNumber()).thenReturn(java.math.BigInteger.ONE);
         when(certificate.getVersion()).thenReturn(3);
         when(certificate.getSigAlgName()).thenReturn("SHA256withRSA");
