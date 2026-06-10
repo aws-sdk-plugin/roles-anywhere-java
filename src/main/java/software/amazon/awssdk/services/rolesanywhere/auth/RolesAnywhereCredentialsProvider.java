@@ -1,5 +1,8 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
+import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -9,10 +12,6 @@ import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.utils.Logger;
-
-import java.net.URI;
-import java.time.Duration;
-import java.time.Instant;
 
 /**
  * AWS Credentials Provider for IAM Roles Anywhere.
@@ -107,16 +106,14 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     private X509Identity getIdentity() throws IdentityProviderException {
         X509Identity resolved = identityProvider.create();
         if (resolved == null) {
-            throw new IdentityProviderException(
-                    "X509IdentityProvider returned null. "
+            throw new IdentityProviderException("X509IdentityProvider returned null. "
                     + "Ensure your identityProvider returns a valid X509Identity.");
         }
         try {
             ValidationUtils.validateCertificate(resolved.certificate());
             ValidationUtils.validatePrivateKey(resolved.privateKey());
         } catch (Exception e) {
-            throw new IdentityProviderException(
-                    "X509IdentityProvider returned an invalid identity", e);
+            throw new IdentityProviderException("X509IdentityProvider returned an invalid identity", e);
         }
         Instant expiryHorizon = Instant.now().plus(Duration.ofDays(30));
         warnIfExpiringSoon(resolved.certificate(), "leaf", expiryHorizon);
@@ -148,22 +145,25 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     @Override
     public synchronized AwsCredentials resolveCredentials() {
         // Use cache if creds and expiration time is available
-        if (this.cachedCredentials != null && this.cachedCredentials.expirationTime().isPresent()) {
+        if (this.cachedCredentials != null
+                && this.cachedCredentials.expirationTime().isPresent()) {
             // and if it is too early to refresh
-            if (Instant.now().plus(staleTime).isBefore(this.cachedCredentials.expirationTime().get())) {
+            if (Instant.now()
+                    .plus(staleTime)
+                    .isBefore(this.cachedCredentials.expirationTime().get())) {
                 return this.cachedCredentials;
             }
         }
         // Enforce minimum credential refresh interval to prevent retry storms
-        if (this.cachedCredentials != null
-                && Instant.now().isBefore(lastRefreshTime.plus(minRefreshInterval))) {
+        if (this.cachedCredentials != null && Instant.now().isBefore(lastRefreshTime.plus(minRefreshInterval))) {
             return this.cachedCredentials;
         }
         // Otherwise call create session to refresh
         this.lastRefreshTime = Instant.now(); // throttle even on failure
         X509Signer signer = X509Signer.builder()
                 .region(this.region)
-                .serviceName("rolesanywhere").build();
+                .serviceName("rolesanywhere")
+                .build();
         SdkHttpFullRequest request = this.createSessionRequestBuilder().build();
         SignedRequest sr;
         try {
@@ -238,8 +238,7 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         private Duration staleTime = Duration.ofMinutes(5);
         private Duration minRefreshInterval = DEFAULT_MIN_REFRESH_INTERVAL;
 
-        private Builder() {
-        }
+        private Builder() {}
 
         private Region resolveRegion() {
             if (region != null) {
@@ -547,10 +546,8 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
             if (minRefreshInterval == null) {
                 throw new IllegalArgumentException("minRefreshInterval must not be null");
             }
-            if (!minRefreshInterval.isZero()
-                    && minRefreshInterval.compareTo(MIN_REFRESH_INTERVAL_FLOOR) < 0) {
-                throw new IllegalArgumentException(
-                        "minRefreshInterval cannot be less than "
+            if (!minRefreshInterval.isZero() && minRefreshInterval.compareTo(MIN_REFRESH_INTERVAL_FLOOR) < 0) {
+                throw new IllegalArgumentException("minRefreshInterval cannot be less than "
                         + MIN_REFRESH_INTERVAL_FLOOR.getSeconds() + " seconds"
                         + " (use Duration.ZERO to disable throttling)");
             }

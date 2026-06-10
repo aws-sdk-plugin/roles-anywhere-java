@@ -1,5 +1,10 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Map;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkServiceException;
@@ -10,12 +15,6 @@ import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpResponse;
 import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 import software.amazon.awssdk.protocols.jsoncore.JsonNode;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Map;
 
 /**
  * Utility class for executing HTTP requests and handling responses for IAM
@@ -43,20 +42,20 @@ final class CreateSessionRequestUtils {
             SdkHttpFullRequest request, SignedRequest signedRequest, SdkHttpClient httpClient) {
         try {
             // Execute request using SDK client
-            HttpExecuteRequest.Builder executeRequestBuilder = HttpExecuteRequest.builder()
-                    .request(signedRequest.request()); // signed sdkrequest is used
+            HttpExecuteRequest.Builder executeRequestBuilder =
+                    HttpExecuteRequest.builder().request(signedRequest.request()); // signed sdkrequest is used
 
             // unfortunately the signRequest.payload is not equivalent here and causes
             // Invalid signature
             // So we make sure to use the provider from the full request used to create
             // signed request
             if (request.contentStreamProvider().isPresent()) {
-                executeRequestBuilder.contentStreamProvider(request.contentStreamProvider().get());
+                executeRequestBuilder.contentStreamProvider(
+                        request.contentStreamProvider().get());
             }
 
-            HttpExecuteResponse executeResponse = httpClient.prepareRequest(
-                    executeRequestBuilder.build())
-                    .call();
+            HttpExecuteResponse executeResponse =
+                    httpClient.prepareRequest(executeRequestBuilder.build()).call();
             SdkHttpResponse response = executeResponse.httpResponse();
 
             // Validate HTTP status code
@@ -115,8 +114,8 @@ final class CreateSessionRequestUtils {
     private static void throwSDKErrorEquivalent(int statusCode, String responseBody) {
         String errorMessage = extractErrorMessage(responseBody);
 
-        SdkServiceException.Builder exceptionBuilder = SdkServiceException.builder()
-                .statusCode(statusCode);
+        SdkServiceException.Builder exceptionBuilder =
+                SdkServiceException.builder().statusCode(statusCode);
 
         // Map of status codes to their default error messages
         Map<Integer, String> statusCodeMessages = Map.of(
@@ -141,9 +140,7 @@ final class CreateSessionRequestUtils {
                 finalMessage = "Server Error: " + errorMessage;
             }
         } else {
-            finalMessage = errorMessage.isEmpty()
-                    ? "IAM Roles Anywhere service error"
-                    : errorMessage;
+            finalMessage = errorMessage.isEmpty() ? "IAM Roles Anywhere service error" : errorMessage;
         }
 
         exceptionBuilder.message(finalMessage);
@@ -198,7 +195,9 @@ final class CreateSessionRequestUtils {
 
             // Navigate to credentialSet[0].credentials
             JsonNode credentialSetNode = jsonNode.field("credentialSet").orElse(null);
-            if (credentialSetNode == null || !credentialSetNode.isArray() || credentialSetNode.asArray().isEmpty()) {
+            if (credentialSetNode == null
+                    || !credentialSetNode.isArray()
+                    || credentialSetNode.asArray().isEmpty()) {
                 throw SdkClientException.builder()
                         .message("Invalid response from IAM Roles Anywhere service: missing credentialSet")
                         .build();

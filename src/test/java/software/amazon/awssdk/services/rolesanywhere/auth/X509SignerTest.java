@@ -1,26 +1,25 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
-import software.amazon.awssdk.http.SdkHttpFullRequest;
-import software.amazon.awssdk.http.SdkHttpMethod;
-import software.amazon.awssdk.regions.Region;
-
-import java.math.BigInteger;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.util.Date;
-import java.util.List;
-import java.util.regex.Pattern;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+
+import java.math.BigInteger;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.cert.X509Certificate;
+import java.util.Date;
+import java.util.List;
+import java.util.regex.Pattern;
+import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.SdkHttpMethod;
+import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
+import software.amazon.awssdk.regions.Region;
 
 /**
  * Unit tests for X509Signer.
@@ -51,10 +50,8 @@ class X509SignerTest {
 
         // Create mock certificate with all required methods
         X509Certificate certificate = mock(X509Certificate.class);
-        when(certificate.getSubjectX500Principal())
-                .thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
-        when(certificate.getIssuerX500Principal())
-                .thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
+        when(certificate.getSubjectX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
+        when(certificate.getIssuerX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
         when(certificate.getNotBefore()).thenReturn(new Date());
         long certNotAfter = 365L * 24 * 60 * 60 * 1000;
         when(certificate.getNotAfter()).thenReturn(new Date(System.currentTimeMillis() + certNotAfter));
@@ -62,9 +59,11 @@ class X509SignerTest {
         when(certificate.getVersion()).thenReturn(3);
         when(certificate.getSigAlgName()).thenReturn("SHA256withRSA");
         when(certificate.getPublicKey()).thenReturn(keyPair.getPublic());
-        when(certificate.getEncoded()).thenReturn(("-----BEGIN CERTIFICATE-----"
-                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
-                + "\n-----END CERTIFICATE-----").getBytes(StandardCharsets.UTF_8));
+        when(certificate.getEncoded())
+                .thenReturn(("-----BEGIN CERTIFICATE-----"
+                                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
+                                + "\n-----END CERTIFICATE-----")
+                        .getBytes(StandardCharsets.UTF_8));
 
         // Sign the request - should succeed without throwing exception
         SignedRequest signedRequest = signer.sign(request, keyPair.getPrivate(), certificate);
@@ -83,10 +82,8 @@ class X509SignerTest {
 
         // Create mock certificate
         X509Certificate certificate = mock(X509Certificate.class);
-        when(certificate.getSubjectX500Principal())
-                .thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
-        when(certificate.getIssuerX500Principal())
-                .thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
+        when(certificate.getSubjectX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
+        when(certificate.getIssuerX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
         when(certificate.getNotBefore()).thenReturn(new Date());
         long certNotAfter = 365L * 24 * 60 * 60 * 1000;
         when(certificate.getNotAfter()).thenReturn(new Date(System.currentTimeMillis() + certNotAfter));
@@ -94,9 +91,11 @@ class X509SignerTest {
         when(certificate.getVersion()).thenReturn(3);
         when(certificate.getSigAlgName()).thenReturn("SHA256withRSA");
         when(certificate.getPublicKey()).thenReturn(keyPair.getPublic());
-        when(certificate.getEncoded()).thenReturn(("-----BEGIN CERTIFICATE-----"
-                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
-                + "\n-----END CERTIFICATE-----").getBytes(StandardCharsets.UTF_8));
+        when(certificate.getEncoded())
+                .thenReturn(("-----BEGIN CERTIFICATE-----"
+                                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
+                                + "\n-----END CERTIFICATE-----")
+                        .getBytes(StandardCharsets.UTF_8));
 
         // Create signer
         X509Signer signer = X509Signer.builder()
@@ -125,8 +124,7 @@ class X509SignerTest {
         // <arch>)
         // Pattern allows for flexible version, java version, os, osVersion, and arch
         // values
-        Pattern userAgentPattern = Pattern.compile(
-                "^CredProvider/[^ ]+ \\([^;]+; [^;]+/[^;]+; [^)]+\\)$");
+        Pattern userAgentPattern = Pattern.compile("^CredProvider/[^ ]+ \\([^;]+; [^;]+/[^;]+; [^)]+\\)$");
         String expectedFormat = "CredProvider/<version> (<javaVersion>; <os>/<osVersion>; <arch>)";
         assertTrue(
                 userAgentPattern.matcher(userAgent).matches(),

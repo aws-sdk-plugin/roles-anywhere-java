@@ -1,5 +1,8 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.endpoints.Endpoint;
@@ -10,10 +13,6 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.rolesanywhere.endpoints.RolesAnywhereEndpointParams;
 import software.amazon.awssdk.services.rolesanywhere.endpoints.RolesAnywhereEndpointProvider;
 import software.amazon.awssdk.utils.StringUtils;
-
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Utility class for building CreateSession API requests for IAM Roles Anywhere. This class
@@ -33,8 +32,7 @@ final class CreateSessionRequestBuilder {
     private URI customEndpoint;
     private boolean fipsEnabled = false;
     private boolean dualStackEnabled = false;
-    private final RolesAnywhereEndpointProvider endpointProvider =
-            RolesAnywhereEndpointProvider.defaultProvider();
+    private final RolesAnywhereEndpointProvider endpointProvider = RolesAnywhereEndpointProvider.defaultProvider();
 
     /**
      * Creates a new CreateSessionRequestBuilder for the specified region.
@@ -207,12 +205,7 @@ final class CreateSessionRequestBuilder {
         // Add the /sessions path
         URI finalEndpoint;
         try {
-            finalEndpoint =
-                    new URI(
-                            resolvedEndpoint.getScheme(),
-                            resolvedEndpoint.getAuthority(),
-                            "/sessions",
-                            null);
+            finalEndpoint = new URI(resolvedEndpoint.getScheme(), resolvedEndpoint.getAuthority(), "/sessions", null);
         } catch (URISyntaxException e) {
             throw new RuntimeException("Failed to construct final endpoint URI", e);
         }

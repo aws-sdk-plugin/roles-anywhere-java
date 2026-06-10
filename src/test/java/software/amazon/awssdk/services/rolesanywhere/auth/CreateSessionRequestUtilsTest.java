@@ -1,5 +1,16 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
@@ -14,18 +25,6 @@ import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpRequest;
 import software.amazon.awssdk.http.SdkHttpResponse;
 import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
-
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
 
 class CreateSessionRequestUtilsTest {
 
@@ -102,8 +101,8 @@ class CreateSessionRequestUtilsTest {
     void executeHttpRequestErrorResponseThrowsSdkServiceException() throws Exception {
         // Arrange
         String errorResponse = "{\"message\":\"Invalid request\"}";
-        AbortableInputStream responseStream = AbortableInputStream.create(
-                new ByteArrayInputStream(errorResponse.getBytes(StandardCharsets.UTF_8)));
+        AbortableInputStream responseStream =
+                AbortableInputStream.create(new ByteArrayInputStream(errorResponse.getBytes(StandardCharsets.UTF_8)));
 
         when(signedRequest.request()).thenReturn(httpRequest);
         when(httpClient.prepareRequest(any(HttpExecuteRequest.class))).thenReturn(executableRequest);
@@ -113,7 +112,8 @@ class CreateSessionRequestUtilsTest {
         when(httpResponse.responseBody()).thenReturn(Optional.of(responseStream));
 
         // Act & Assert
-        SdkServiceException exception = assertThrows(SdkServiceException.class,
+        SdkServiceException exception = assertThrows(
+                SdkServiceException.class,
                 () -> CreateSessionRequestUtils.executeHttpRequest(httpFullRequest, signedRequest, httpClient));
 
         assertTrue(exception.getMessage().contains("Bad Request"));
@@ -127,7 +127,8 @@ class CreateSessionRequestUtilsTest {
         when(executableRequest.call()).thenThrow(new IOException("Network error"));
 
         // Act & Assert
-        SdkClientException exception = assertThrows(SdkClientException.class,
+        SdkClientException exception = assertThrows(
+                SdkClientException.class,
                 () -> CreateSessionRequestUtils.executeHttpRequest(httpFullRequest, signedRequest, httpClient));
 
         assertTrue(exception.getMessage().contains("Failed to execute HTTP request"));
@@ -149,14 +150,15 @@ class CreateSessionRequestUtilsTest {
     @Test
     void extractErrorMessageWithInvalidJson() {
         String invalid = "not valid json";
-        assertEquals(CreateSessionRequestUtils.UNPARSEABLE_RESPONSE_MESSAGE,
+        assertEquals(
+                CreateSessionRequestUtils.UNPARSEABLE_RESPONSE_MESSAGE,
                 CreateSessionRequestUtils.extractErrorMessage(invalid));
     }
 
     @Test
     void extractErrorMessageWithValidJsonButNoMessageField() {
         String json = "{\"Error\": {\"Code\": \"AccessDenied\"}}";
-        assertEquals(CreateSessionRequestUtils.MISSING_MESSAGE_FIELD,
-                CreateSessionRequestUtils.extractErrorMessage(json));
+        assertEquals(
+                CreateSessionRequestUtils.MISSING_MESSAGE_FIELD, CreateSessionRequestUtils.extractErrorMessage(json));
     }
 }

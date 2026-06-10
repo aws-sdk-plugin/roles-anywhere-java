@@ -1,7 +1,6 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
 import java.util.Map;
-
 import software.amazon.awssdk.arns.Arn;
 
 /**
@@ -19,8 +18,10 @@ final class ArnValidator {
     private static final Map<String, String> RESOURCE_TYPES = Map.of(
             TRUST_ANCHOR_RESOURCE_TYPE,
             "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>",
-            ROLE_RESOURCE_TYPE, "arn:<partition>:iam::<account>:role/<role-name>",
-            PROFILE_RESOURCE_TYPE, "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>");
+            ROLE_RESOURCE_TYPE,
+            "arn:<partition>:iam::<account>:role/<role-name>",
+            PROFILE_RESOURCE_TYPE,
+            "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>");
 
     private ArnValidator() {
         // Utility class - prevent instantiation
@@ -77,8 +78,8 @@ final class ArnValidator {
         try {
             arn = Arn.fromString(arnString);
         } catch (IllegalArgumentException iae) {
-            throw new IllegalArgumentException("Expected: "
-                    + RESOURCE_TYPES.get(resourceType) + ", but got: " + arnString, iae);
+            throw new IllegalArgumentException(
+                    "Expected: " + RESOURCE_TYPES.get(resourceType) + ", but got: " + arnString, iae);
         }
 
         String expectedService = ROLESANYWHERE_SERVICE;
@@ -87,11 +88,11 @@ final class ArnValidator {
         }
 
         if (!expectedService.equals(arn.service())) {
-            throw new IllegalArgumentException(
-                    "Invalid " + resourceType + " ARN service, got: " + arn.service());
+            throw new IllegalArgumentException("Invalid " + resourceType + " ARN service, got: " + arn.service());
         }
 
-        if (arn.resource().resourceType().isEmpty() || !resourceType.equals(arn.resource().resourceType().get())) {
+        if (arn.resource().resourceType().isEmpty()
+                || !resourceType.equals(arn.resource().resourceType().get())) {
             throw new IllegalArgumentException(
                     "Invalid " + resourceType + " ARN resource type. Expected: " + resourceType);
         }

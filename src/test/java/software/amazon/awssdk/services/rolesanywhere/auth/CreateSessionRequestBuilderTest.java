@@ -1,9 +1,9 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.arns.Arn;
-import software.amazon.awssdk.http.SdkHttpFullRequest;
-import software.amazon.awssdk.regions.Region;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,19 +11,18 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.arns.Arn;
+import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.regions.Region;
 
 /**
  * Unit tests for CreateSessionRequestBuilder.
  */
 class CreateSessionRequestBuilderTest {
 
-    private static final String TRUST_ANCHOR_ARN_STRING = "arn:aws:rolesanywhere:us-east-1:"
-            + "123456789012:trust-anchor/trust-anchor-id";
+    private static final String TRUST_ANCHOR_ARN_STRING =
+            "arn:aws:rolesanywhere:us-east-1:" + "123456789012:trust-anchor/trust-anchor-id";
     private static final String PROFILE_ARN_STRING = "arn:aws:rolesanywhere:us-east-1:123456789012:profile/profile-id";
     private static final String ROLE_ARN_STRING = "arn:aws:iam::123456789012:role/test-role";
 
@@ -51,9 +50,10 @@ class CreateSessionRequestBuilderTest {
         assertEquals("/sessions", request.encodedPath());
 
         // Verify headers
-        assertEquals("application/json",
-                request.firstMatchingHeader("Content-Type").orElse(null));
-        assertEquals("rolesanywhere.us-west-2.amazonaws.com",
+        assertEquals(
+                "application/json", request.firstMatchingHeader("Content-Type").orElse(null));
+        assertEquals(
+                "rolesanywhere.us-west-2.amazonaws.com",
                 request.firstMatchingHeader("Host").orElse(null));
 
         Map<String, List<String>> queryParams = request.rawQueryParameters();
@@ -214,7 +214,7 @@ class CreateSessionRequestBuilderTest {
     @Test
     void testDifferentRegions() {
         // Test various AWS regions
-        String[] regions = { "us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "ca-central-1" };
+        String[] regions = {"us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "ca-central-1"};
 
         for (String regionId : regions) {
             Region region = Region.of(regionId);
@@ -251,8 +251,7 @@ class CreateSessionRequestBuilderTest {
     @Test
     void testBuildWithEmptyTrustAnchorArn() {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new CreateSessionRequestBuilder(Region.US_EAST_1)
-                    .trustAnchorArn("");
+            new CreateSessionRequestBuilder(Region.US_EAST_1).trustAnchorArn("");
         });
         assertEquals("Trust anchor ARN cannot be empty or whitespace-only", exception.getMessage());
     }
@@ -301,8 +300,7 @@ class CreateSessionRequestBuilderTest {
     @Test
     void testBuildWithWhitespaceTrustAnchorArn() {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new CreateSessionRequestBuilder(Region.US_EAST_1)
-                    .trustAnchorArn("   ");
+            new CreateSessionRequestBuilder(Region.US_EAST_1).trustAnchorArn("   ");
         });
         assertEquals("Trust anchor ARN cannot be empty or whitespace-only", exception.getMessage());
     }
@@ -356,8 +354,7 @@ class CreateSessionRequestBuilderTest {
     @Test
     void testBuildWithNullArnObjects() {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new CreateSessionRequestBuilder(Region.US_EAST_1)
-                    .trustAnchorArn((Arn) null);
+            new CreateSessionRequestBuilder(Region.US_EAST_1).trustAnchorArn((Arn) null);
         });
         assertEquals("Trust anchor ARN is required, but was null", exception.getMessage());
     }

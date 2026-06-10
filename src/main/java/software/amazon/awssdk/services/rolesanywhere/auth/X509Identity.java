@@ -1,21 +1,21 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import software.amazon.awssdk.identity.spi.Identity;
-
-import javax.annotation.Nonnull;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
+import javax.annotation.Nonnull;
+import software.amazon.awssdk.identity.spi.Identity;
 
 /**
  * An identity implementation that uses X.509 certificates for authentication.
  * This class encapsulates an X.509 certificate, its corresponding private key,
  * and an optional certificate chain for trust validation.
  */
-public record X509Identity(X509Certificate certificate, PrivateKey privateKey,
-        Collection<X509Certificate> certificateChain) implements Identity {
+public record X509Identity(
+        X509Certificate certificate, PrivateKey privateKey, Collection<X509Certificate> certificateChain)
+        implements Identity {
     /**
      * Creates an X509Identity with a certificate and private key, but no
      * certificate chain.
@@ -40,8 +40,8 @@ public record X509Identity(X509Certificate certificate, PrivateKey privateKey,
      * @param certificateChain the certificate chain for trust validation, may be
      *                         null or empty
      */
-    public X509Identity(X509Certificate certificate, PrivateKey privateKey,
-            Collection<X509Certificate> certificateChain) {
+    public X509Identity(
+            X509Certificate certificate, PrivateKey privateKey, Collection<X509Certificate> certificateChain) {
         this.certificate = certificate;
         this.privateKey = privateKey;
         this.certificateChain = Objects.requireNonNullElse(certificateChain, Collections.emptyList());

@@ -1,24 +1,23 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.api.Test;
-
-import java.security.KeyPairGenerator;
-import java.security.PrivateKey;
-import java.security.cert.X509Certificate;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.cert.X509Certificate;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
+
 public class X509IdentityProviderTest {
 
     private X509Identity createTestIdentity() throws Exception {
         X509Certificate certificate = mock(X509Certificate.class);
-        PrivateKey privateKey = KeyPairGenerator.getInstance("RSA")
-                .generateKeyPair().getPrivate();
+        PrivateKey privateKey =
+                KeyPairGenerator.getInstance("RSA").generateKeyPair().getPrivate();
         return new X509Identity(certificate, privateKey);
     }
 

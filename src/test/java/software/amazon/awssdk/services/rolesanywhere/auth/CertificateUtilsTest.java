@@ -1,12 +1,10 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
-import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,12 +14,13 @@ import java.security.GeneralSecurityException;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.stream.Stream;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Tests for {@link CertificateUtils#readPrivateKeyFromString} and
@@ -34,10 +33,7 @@ class CertificateUtilsTest {
     private static final Path CERTS_DIR = Path.of("src/test/resources/certificates");
 
     static Stream<Arguments> keyFixtures() {
-        return Stream.of(
-                Arguments.of("RSA", "simple-leaf-key.pem"),
-                Arguments.of("EC", "ec-leaf-key.pem")
-        );
+        return Stream.of(Arguments.of("RSA", "simple-leaf-key.pem"), Arguments.of("EC", "ec-leaf-key.pem"));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -62,8 +58,7 @@ class CertificateUtilsTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("keyFixtures")
-    void readPrivateKeyFromStringAndLoadPrivateKeyProduceSameKey(
-            String keyType, String fileName) throws Exception {
+    void readPrivateKeyFromStringAndLoadPrivateKeyProduceSameKey(String keyType, String fileName) throws Exception {
         Path keyPath = CERTS_DIR.resolve(fileName);
         String pemData = Files.readString(keyPath, StandardCharsets.UTF_8);
 
@@ -75,7 +70,8 @@ class CertificateUtilsTest {
 
     @Test
     void readPrivateKeyFromStringInvalidBase64Throws() {
-        assertThrows(GeneralSecurityException.class,
+        assertThrows(
+                GeneralSecurityException.class,
                 () -> CertificateUtils.readPrivateKeyFromString("not-valid-pem!!!", "RSA"));
     }
 
@@ -83,14 +79,12 @@ class CertificateUtilsTest {
     void readPrivateKeyFromStringWrongKeyTypeThrows() throws Exception {
         String rsaPem = Files.readString(CERTS_DIR.resolve("simple-leaf-key.pem"), StandardCharsets.UTF_8);
 
-        assertThrows(GeneralSecurityException.class,
-                () -> CertificateUtils.readPrivateKeyFromString(rsaPem, "EC"));
+        assertThrows(GeneralSecurityException.class, () -> CertificateUtils.readPrivateKeyFromString(rsaPem, "EC"));
     }
 
     @Test
     void loadPrivateKeyNonexistentFileThrows() {
-        assertThrows(Exception.class,
-                () -> CertificateUtils.loadPrivateKey(Path.of("nonexistent-key.pem"), "RSA"));
+        assertThrows(Exception.class, () -> CertificateUtils.loadPrivateKey(Path.of("nonexistent-key.pem"), "RSA"));
     }
 
     /**

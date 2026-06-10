@@ -1,9 +1,9 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests for {@link SecurityUtils} zeroization methods.

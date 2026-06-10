@@ -1,14 +1,5 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
-
-import java.security.PrivateKey;
-import java.security.cert.CertificateEncodingException;
-import java.security.cert.X509Certificate;
-import java.util.stream.Stream;
-
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -16,13 +7,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.security.PrivateKey;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.X509Certificate;
+import java.util.stream.Stream;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
 class ValidationUtilsTest {
 
     @ParameterizedTest
     @MethodSource("requireNonNullAndNonEmptyProvider")
     void testRequireNonNullAndNonEmpty(String value, boolean shouldThrow, String expectedMessage) {
         if (shouldThrow) {
-            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+            IllegalArgumentException ex = assertThrows(
+                    IllegalArgumentException.class,
                     () -> ValidationUtils.requireNonNullAndNonEmpty(value, "testParam"));
             assertTrue(ex.getMessage().contains(expectedMessage));
         } else {
@@ -42,8 +42,8 @@ class ValidationUtilsTest {
     @MethodSource("requireParameterProvider")
     void testRequireParameter(Object value, boolean shouldThrow) {
         if (shouldThrow) {
-            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                    () -> ValidationUtils.requireParameter(value, "testParam"));
+            IllegalArgumentException ex = assertThrows(
+                    IllegalArgumentException.class, () -> ValidationUtils.requireParameter(value, "testParam"));
             assertTrue(ex.getMessage().contains("is required, but was null"));
         } else {
             assertDoesNotThrow(() -> ValidationUtils.requireParameter(value, "testParam"));
@@ -51,10 +51,7 @@ class ValidationUtilsTest {
     }
 
     static Stream<Arguments> requireParameterProvider() {
-        return Stream.of(
-                Arguments.of(null, true),
-                Arguments.of("value", false),
-                Arguments.of(123, false));
+        return Stream.of(Arguments.of(null, true), Arguments.of("value", false), Arguments.of(123, false));
     }
 
     @ParameterizedTest
@@ -79,9 +76,7 @@ class ValidationUtilsTest {
 
     static Stream<Arguments> nullOrEmptyByteArrayProvider() {
         return Stream.of(
-                Arguments.of(null, true),
-                Arguments.of(new byte[0], true),
-                Arguments.of(new byte[] { 1, 2, 3 }, false));
+                Arguments.of(null, true), Arguments.of(new byte[0], true), Arguments.of(new byte[] {1, 2, 3}, false));
     }
 
     @ParameterizedTest
@@ -96,15 +91,12 @@ class ValidationUtilsTest {
 
     static Stream<Arguments> validateCertificateProvider() throws CertificateEncodingException {
         X509Certificate validCert = mock(X509Certificate.class);
-        when(validCert.getEncoded()).thenReturn(new byte[] { 1, 2, 3 });
+        when(validCert.getEncoded()).thenReturn(new byte[] {1, 2, 3});
 
         X509Certificate emptyCert = mock(X509Certificate.class);
         when(emptyCert.getEncoded()).thenReturn(new byte[0]);
 
-        return Stream.of(
-                Arguments.of(null, true),
-                Arguments.of(emptyCert, true),
-                Arguments.of(validCert, false));
+        return Stream.of(Arguments.of(null, true), Arguments.of(emptyCert, true), Arguments.of(validCert, false));
     }
 
     @ParameterizedTest
@@ -120,7 +112,7 @@ class ValidationUtilsTest {
     static Stream<Arguments> validatePrivateKeyProvider() {
         PrivateKey validKey = mock(PrivateKey.class);
         when(validKey.isDestroyed()).thenReturn(false);
-        when(validKey.getEncoded()).thenReturn(new byte[] { 1, 2, 3 });
+        when(validKey.getEncoded()).thenReturn(new byte[] {1, 2, 3});
 
         PrivateKey destroyedKey = mock(PrivateKey.class);
         when(destroyedKey.isDestroyed()).thenReturn(true);

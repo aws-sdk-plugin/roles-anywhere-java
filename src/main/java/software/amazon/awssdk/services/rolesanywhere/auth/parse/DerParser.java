@@ -31,9 +31,7 @@ final class DerParser {
         int tag = data[pos++] & 0xff;
         int length = readLength();
         if (pos + length > data.length) {
-            throw new IOException(
-                    "DER object length " + length
-                    + " exceeds available data at position " + pos);
+            throw new IOException("DER object length " + length + " exceeds available data at position " + pos);
         }
         byte[] value = new byte[length];
         System.arraycopy(data, pos, value, 0, length);
@@ -43,8 +41,7 @@ final class DerParser {
 
     private int readLength() throws IOException {
         if (pos >= data.length) {
-            throw new IOException(
-                    "Unexpected end of DER input while reading length");
+            throw new IOException("Unexpected end of DER input while reading length");
         }
         int b = data[pos++] & 0xff;
         if (b < 0x80) {
@@ -52,8 +49,7 @@ final class DerParser {
         }
         int numBytes = b & 0x7f;
         if (numBytes == 0) {
-            throw new IOException(
-                    "Indefinite length encoding is not supported in DER");
+            throw new IOException("Indefinite length encoding is not supported in DER");
         }
         if (numBytes > 4 || pos + numBytes > data.length) {
             throw new IOException("DER length too large or truncated");
@@ -107,8 +103,7 @@ final class DerParser {
                 }
             }
             if (value.length > 1 && (value[value.length - 1] & 0x80) != 0) {
-                throw new IOException(
-                        "Truncated OID: unterminated multi-byte component");
+                throw new IOException("Truncated OID: unterminated multi-byte component");
             }
             return oid.toString();
         }
@@ -117,8 +112,7 @@ final class DerParser {
             try {
                 return new BigInteger(value).intValueExact();
             } catch (ArithmeticException e) {
-                throw new IOException(
-                        "ASN.1 INTEGER value does not fit in an int", e);
+                throw new IOException("ASN.1 INTEGER value does not fit in an int", e);
             }
         }
     }

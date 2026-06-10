@@ -1,8 +1,5 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import software.amazon.awssdk.services.rolesanywhere.auth.parse.Pbes2Decoder;
-import software.amazon.awssdk.utils.Logger;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +18,8 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Set;
 import java.util.regex.Pattern;
+import software.amazon.awssdk.services.rolesanywhere.auth.parse.Pbes2Decoder;
+import software.amazon.awssdk.utils.Logger;
 
 /**
  * Utility class for working with X.509 certificates and private keys.
@@ -96,8 +95,7 @@ public final class CertificateUtils {
      * @throws GeneralSecurityException if the key cannot be loaded
      * @throws IOException              if the file cannot be read
      */
-    public static PrivateKey loadPrivateKey(
-            Path path, String keyType, char[] password)
+    public static PrivateKey loadPrivateKey(Path path, String keyType, char[] password)
             throws GeneralSecurityException, IOException {
         warnIfInsecurePermissions(path);
         byte[] derBytes = readEncryptedPem(path);
@@ -121,8 +119,7 @@ public final class CertificateUtils {
      * @throws GeneralSecurityException if the key cannot be loaded
      * @throws IOException              if the file cannot be read
      */
-    public static PrivateKey loadPrivateKey(
-            Path path, String keyType, char[] password, String algorithm)
+    public static PrivateKey loadPrivateKey(Path path, String keyType, char[] password, String algorithm)
             throws GeneralSecurityException, IOException {
         warnIfInsecurePermissions(path);
         byte[] derBytes = readEncryptedPem(path);
@@ -144,8 +141,7 @@ public final class CertificateUtils {
      * @throws GeneralSecurityException if the key cannot be loaded
      * @throws IOException              if the file cannot be read
      */
-    public static PrivateKey loadEncryptedDerPrivateKey(
-            Path path, String keyType, char[] password)
+    public static PrivateKey loadEncryptedDerPrivateKey(Path path, String keyType, char[] password)
             throws GeneralSecurityException, IOException {
         warnIfInsecurePermissions(path);
         byte[] derBytes = readEncryptedDer(path);
@@ -168,8 +164,7 @@ public final class CertificateUtils {
      * @throws GeneralSecurityException if the key cannot be loaded
      * @throws IOException              if the file cannot be read
      */
-    public static PrivateKey loadEncryptedDerPrivateKey(
-            Path path, String keyType, char[] password, String algorithm)
+    public static PrivateKey loadEncryptedDerPrivateKey(Path path, String keyType, char[] password, String algorithm)
             throws GeneralSecurityException, IOException {
         warnIfInsecurePermissions(path);
         byte[] derBytes = readEncryptedDer(path);
@@ -186,8 +181,7 @@ public final class CertificateUtils {
                 return;
             }
             Set<PosixFilePermission> perms = Files.getPosixFilePermissions(path);
-            if (perms.contains(PosixFilePermission.GROUP_READ)
-                    || perms.contains(PosixFilePermission.OTHERS_READ)) {
+            if (perms.contains(PosixFilePermission.GROUP_READ) || perms.contains(PosixFilePermission.OTHERS_READ)) {
                 LOG.warn(() -> "Private key file " + path
                         + " has permissions " + PosixFilePermissions.toString(perms)
                         + " — it is readable by group or others. "
@@ -199,46 +193,38 @@ public final class CertificateUtils {
         }
     }
 
-    private static byte[] readEncryptedPem(Path path)
-            throws GeneralSecurityException, IOException {
+    private static byte[] readEncryptedPem(Path path) throws GeneralSecurityException, IOException {
         byte[] keyData = Files.readAllBytes(path);
         try {
             String keyString = new String(keyData, StandardCharsets.UTF_8);
             if (keyString.contains("BEGIN RSA PRIVATE KEY")
                     || keyString.contains("BEGIN EC PRIVATE KEY")
                     || (keyString.contains("BEGIN PRIVATE KEY")
-                    && !keyString.contains("BEGIN ENCRYPTED PRIVATE KEY"))) {
-                throw new GeneralSecurityException(
-                        "Key file is not encrypted. "
+                            && !keyString.contains("BEGIN ENCRYPTED PRIVATE KEY"))) {
+                throw new GeneralSecurityException("Key file is not encrypted. "
                         + "Use loadPrivateKey(path, keyType) instead, "
                         + "or encrypt with: openssl pkcs8 -topk8 -v2 aes-256-cbc");
             }
             if (!keyString.contains("BEGIN ENCRYPTED PRIVATE KEY")) {
-                throw new GeneralSecurityException(
-                        "File does not appear to be a PEM-encoded encrypted "
+                throw new GeneralSecurityException("File does not appear to be a PEM-encoded encrypted "
                         + "PKCS#8 key. For DER-encoded files use "
                         + "loadEncryptedDerPrivateKey().");
             }
             try {
                 return Base64.getDecoder().decode(trimPemData(keyString));
             } catch (IllegalArgumentException e) {
-                throw new GeneralSecurityException(
-                        "Failed to Base64-decode PEM content", e);
+                throw new GeneralSecurityException("Failed to Base64-decode PEM content", e);
             }
         } finally {
             SecurityUtils.clear(keyData);
         }
     }
 
-    private static byte[] readEncryptedDer(Path path)
-            throws GeneralSecurityException, IOException {
+    private static byte[] readEncryptedDer(Path path) throws GeneralSecurityException, IOException {
         byte[] derBytes = Files.readAllBytes(path);
-        if (derBytes.length > 10
-                && new String(derBytes, 0, 10, StandardCharsets.US_ASCII)
-                .startsWith("-----BEGIN")) {
+        if (derBytes.length > 10 && new String(derBytes, 0, 10, StandardCharsets.US_ASCII).startsWith("-----BEGIN")) {
             SecurityUtils.clear(derBytes);
-            throw new GeneralSecurityException(
-                    "File appears to be PEM-encoded, not DER. "
+            throw new GeneralSecurityException("File appears to be PEM-encoded, not DER. "
                     + "Use loadPrivateKey(path, keyType, password) instead.");
         }
         return derBytes;
@@ -314,7 +300,8 @@ public final class CertificateUtils {
      * @return Single line Base-64 string, suitable for parsing.
      */
     public static String trimPemData(String pemData) {
-        return PEM_PATTERN.matcher(pemData)
+        return PEM_PATTERN
+                .matcher(pemData)
                 .replaceAll("")
                 .replace("\n", "") // remove newline in combination with below also removes \r\n
                 .replace("\r", ""); // remove other kinds of newline

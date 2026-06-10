@@ -36,17 +36,14 @@ public final class Pbes2Decoder {
             "1.2.840.113549.2.7", "HmacSHA1",
             "1.2.840.113549.2.9", "HmacSHA256",
             "1.2.840.113549.2.10", "HmacSHA384",
-            "1.2.840.113549.2.11", "HmacSHA512"
-    );
+            "1.2.840.113549.2.11", "HmacSHA512");
 
     private static final Map<String, String> CIPHER_OID_TO_NAME = Map.of(
             "2.16.840.1.101.3.4.1.2", "AES_128",
             "2.16.840.1.101.3.4.1.22", "AES_192",
-            "2.16.840.1.101.3.4.1.42", "AES_256"
-    );
+            "2.16.840.1.101.3.4.1.42", "AES_256");
 
-    private Pbes2Decoder() {
-    }
+    private Pbes2Decoder() {}
 
     /**
      * Decrypt using an explicit JCE algorithm name. No ASN.1 parsing needed.
@@ -57,8 +54,7 @@ public final class Pbes2Decoder {
      * @param algorithm JCE algorithm (e.g. "PBEWithHmacSHA256AndAES_256")
      * @return decrypted PrivateKey
      */
-    public static PrivateKey decrypt(byte[] der, char[] password,
-                              String keyType, String algorithm)
+    public static PrivateKey decrypt(byte[] der, char[] password, String keyType, String algorithm)
             throws GeneralSecurityException, IOException {
         try {
             EncryptedPrivateKeyInfo encInfo = new EncryptedPrivateKeyInfo(der);
@@ -66,18 +62,13 @@ public final class Pbes2Decoder {
             Cipher cipher = Cipher.getInstance(algorithm);
             PBEKeySpec keySpec = new PBEKeySpec(password);
             try {
-                cipher.init(Cipher.DECRYPT_MODE,
-                        skf.generateSecret(keySpec),
-                        encInfo.getAlgParameters());
+                cipher.init(Cipher.DECRYPT_MODE, skf.generateSecret(keySpec), encInfo.getAlgParameters());
             } finally {
                 keySpec.clearPassword();
             }
-            return KeyFactory.getInstance(keyType)
-                    .generatePrivate(encInfo.getKeySpec(cipher));
+            return KeyFactory.getInstance(keyType).generatePrivate(encInfo.getKeySpec(cipher));
         } catch (InvalidKeySpecException e) {
-            throw new GeneralSecurityException(
-                    "Failed to decrypt private key — wrong password"
-                    + " or key type?", e);
+            throw new GeneralSecurityException("Failed to decrypt private key — wrong password" + " or key type?", e);
         }
     }
 
@@ -108,14 +99,12 @@ public final class Pbes2Decoder {
             algorithm = resolveAlgorithmName(der);
         } catch (IOException e) {
             throw new GeneralSecurityException(
-                    "Failed to parse encrypted key — is this a PBES2 "
-                    + "encrypted PKCS#8 file?", e);
+                    "Failed to parse encrypted key — is this a PBES2 " + "encrypted PKCS#8 file?", e);
         }
         try {
             return decrypt(der, password, keyType, algorithm);
         } catch (IOException e) {
-            throw new GeneralSecurityException(
-                    "Failed to decrypt key with algorithm " + algorithm, e);
+            throw new GeneralSecurityException("Failed to decrypt key with algorithm " + algorithm, e);
         }
     }
 
@@ -123,16 +112,14 @@ public final class Pbes2Decoder {
      * Parse PBES2 ASN.1 to resolve the JCE algorithm name.
      * Maps KDF + cipher OIDs to {@code PBEWith<PRF>And<Cipher>} format.
      */
-    private static String resolveAlgorithmName(byte[] der)
-            throws GeneralSecurityException, IOException {
+    private static String resolveAlgorithmName(byte[] der) throws GeneralSecurityException, IOException {
         DerParser outer = new DerParser(der);
         DerParser seqParser = outer.readObject().getParser();
         DerParser algIdParser = seqParser.readObject().getParser();
 
         String pbes2Oid = algIdParser.readObject().getOid();
         if (!OID_PBES2.equals(pbes2Oid)) {
-            throw new GeneralSecurityException(
-                    "Not PBES2, OID: " + pbes2Oid);
+            throw new GeneralSecurityException("Not PBES2, OID: " + pbes2Oid);
         }
 
         DerParser pbes2Parser = algIdParser.readObject().getParser();
@@ -143,12 +130,10 @@ public final class Pbes2Decoder {
         String cipherOid = encSchemeParser.readObject().getOid();
         String cipherName = CIPHER_OID_TO_NAME.get(cipherOid);
         if (cipherName == null) {
-            throw new GeneralSecurityException(
-                    "Unsupported cipher OID: " + cipherOid);
+            throw new GeneralSecurityException("Unsupported cipher OID: " + cipherOid);
         }
         if ("AES_192".equals(cipherName)) {
-            throw new GeneralSecurityException(
-                    "AES-192-CBC requires a JCE provider such as BouncyCastle. "
+            throw new GeneralSecurityException("AES-192-CBC requires a JCE provider such as BouncyCastle. "
                     + "Register via Security.addProvider() or use "
                     + "loadPrivateKey(path, keyType, password, algorithm) "
                     + "with the provider's algorithm name.");
@@ -157,15 +142,13 @@ public final class Pbes2Decoder {
         // KDF OID
         String kdfOid = kdfSeq.readObject().getOid();
         if (OID_SCRYPT.equals(kdfOid)) {
-            throw new GeneralSecurityException(
-                    "scrypt requires a JCE provider such as BouncyCastle. "
+            throw new GeneralSecurityException("scrypt requires a JCE provider such as BouncyCastle. "
                     + "Register via Security.addProvider() or use "
                     + "loadPrivateKey(path, keyType, password, algorithm) "
                     + "with the provider's algorithm name.");
         }
         if (!OID_PBKDF2.equals(kdfOid)) {
-            throw new GeneralSecurityException(
-                    "Unsupported KDF OID: " + kdfOid);
+            throw new GeneralSecurityException("Unsupported KDF OID: " + kdfOid);
         }
 
         // PRF from PBKDF2 params
@@ -178,8 +161,7 @@ public final class Pbes2Decoder {
      * Extract PRF algorithm from PBKDF2 params.
      * Handles optional keyLength INTEGER before PRF SEQUENCE.
      */
-    private static String resolvePrf(DerParser kdfParser)
-            throws GeneralSecurityException, IOException {
+    private static String resolvePrf(DerParser kdfParser) throws GeneralSecurityException, IOException {
         DerParser params = kdfParser.readObject().getParser();
         params.readObject(); // salt
         params.readObject(); // iterations
@@ -191,8 +173,7 @@ public final class Pbes2Decoder {
                 String prfOid = obj.getParser().readObject().getOid();
                 hmacName = PRF_OID_TO_HMAC.get(prfOid);
                 if (hmacName == null) {
-                    throw new GeneralSecurityException(
-                            "Unsupported PRF OID: " + prfOid);
+                    throw new GeneralSecurityException("Unsupported PRF OID: " + prfOid);
                 }
             }
         }

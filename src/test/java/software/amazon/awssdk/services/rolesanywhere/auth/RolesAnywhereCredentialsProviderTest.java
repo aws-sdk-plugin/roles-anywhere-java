@@ -1,15 +1,14 @@
 package software.amazon.awssdk.services.rolesanywhere.auth;
 
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.auth.credentials.AwsCredentials;
-import software.amazon.awssdk.http.AbortableInputStream;
-import software.amazon.awssdk.http.ExecutableHttpRequest;
-import software.amazon.awssdk.http.HttpExecuteResponse;
-import software.amazon.awssdk.http.SdkHttpClient;
-import software.amazon.awssdk.http.SdkHttpFullRequest;
-import software.amazon.awssdk.http.SdkHttpResponse;
-import software.amazon.awssdk.regions.Region;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -23,16 +22,16 @@ import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.spy;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.http.AbortableInputStream;
+import software.amazon.awssdk.http.ExecutableHttpRequest;
+import software.amazon.awssdk.http.HttpExecuteResponse;
+import software.amazon.awssdk.http.SdkHttpClient;
+import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.SdkHttpResponse;
+import software.amazon.awssdk.regions.Region;
 
 /**
  * Test class for RolesAnywhereCredentialsProvider.
@@ -40,15 +39,16 @@ import static org.mockito.Mockito.spy;
 public class RolesAnywhereCredentialsProviderTest {
 
     // ARNs from environment variables with fallback defaults (generic test values)
-    private static final String TEST_ROLE_ARN = System.getenv().getOrDefault(
-            "ROLES_ANYWHERE_TEST_ROLE_ARN",
-            "arn:aws:iam::123456789012:role/TestRole");
-    private static final String TEST_PROFILE_ARN = System.getenv().getOrDefault(
-            "ROLES_ANYWHERE_TEST_PROFILE_ARN",
-            "arn:aws:rolesanywhere:us-east-1:123456789012:profile/00000000-0000-0000-0000-000000000000");
-    private static final String TEST_TRUST_ANCHOR_ARN = System.getenv().getOrDefault(
-            "ROLES_ANYWHERE_TEST_TRUST_ANCHOR_ARN",
-            "arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/00000000-0000-0000-0000-000000000000");
+    private static final String TEST_ROLE_ARN =
+            System.getenv().getOrDefault("ROLES_ANYWHERE_TEST_ROLE_ARN", "arn:aws:iam::123456789012:role/TestRole");
+    private static final String TEST_PROFILE_ARN = System.getenv()
+            .getOrDefault(
+                    "ROLES_ANYWHERE_TEST_PROFILE_ARN",
+                    "arn:aws:rolesanywhere:us-east-1:123456789012:profile/00000000-0000-0000-0000-000000000000");
+    private static final String TEST_TRUST_ANCHOR_ARN = System.getenv()
+            .getOrDefault(
+                    "ROLES_ANYWHERE_TEST_TRUST_ANCHOR_ARN",
+                    "arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/00000000-0000-0000-0000-000000000000");
 
     private X509Identity createTestIdentity() throws Exception {
         // Mock certificate for testing
@@ -59,10 +59,8 @@ public class RolesAnywhereCredentialsProviderTest {
 
         // Create mock certificate using Mockito
         X509Certificate certificate = mock(X509Certificate.class);
-        when(certificate.getSubjectX500Principal())
-                .thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
-        when(certificate.getIssuerX500Principal())
-                .thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
+        when(certificate.getSubjectX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
+        when(certificate.getIssuerX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
         when(certificate.getNotBefore()).thenReturn(new java.util.Date());
         long certNotAfter = 365L * 24 * 60 * 60 * 1000;
         when(certificate.getNotAfter()).thenReturn(new java.util.Date(System.currentTimeMillis() + certNotAfter));
@@ -70,29 +68,31 @@ public class RolesAnywhereCredentialsProviderTest {
         when(certificate.getVersion()).thenReturn(3);
         when(certificate.getSigAlgName()).thenReturn("SHA256withRSA");
         when(certificate.getPublicKey()).thenReturn(keyPair.getPublic());
-        when(certificate.getEncoded()).thenReturn(("-----BEGIN CERTIFICATE-----"
-                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
-                + "\nBQAwcDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCldhc2hpbmd0b24xEDAOBgNVBAcM"
-                + "\nB1NlYXR0bGUxEDAOBgNVBAoMB1Rlc3RPcmcxETAPBgNVBAsMCFRlc3RVbml0MRUw"
-                + "\nEwYDVQQDDAxUZXN0IFJvb3QgQ0EwHhcNMjUxMDAyMTgzODQ2WhcNMjcxMDAyMTgz"
-                + "\nODQ2WjByMQswCQYDVQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UE"
-                + "\nBwwHU2VhdHRsZTEQMA4GA1UECgwHVGVzdE9yZzERMA8GA1UECwwIVGVzdFVuaXQx"
-                + "\nFzAVBgNVBAMMDnRlc3QtbGVhZi1jZXJ0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A"
-                + "\nMIIBCgKCAQEAvmeFjlmpxFuIU/e4cP3fiIpaV98TBgmdo4z09tfAnm+admD14nnB"
-                + "\nxqRcvw3Z+gb9l42YQlSyVYQWQ7Um2i9dVqpLlFyEJF0pus/AUgeR4Y9IkhEBUfYe"
-                + "\nRfED/G2JDlsFhXeoFLAw4ZUh+LUIJswB3stpqp4VQEyEKn05Y1AB6ng8JrUCFIEL"
-                + "\naPuThd36mf+kL7WIGMUdN1WsnxJUxM1rqY8L8pnMC4t+7PxPXnpYodov9MobIjYj"
-                + "\nqHE9TI51A0U7vSQNRy2qZ9v3cnr24kNB7DV3FuNfCZGcEhndfMeBly6xDsNAb8Oy"
-                + "\nUNQkMF6Ftr6cvp0XnYNgLWCBBRx0vDL9rQIDAQABo3wwejAJBgNVHRMEAjAAMA4G"
-                + "\nA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwEwHQYD"
-                + "\nVR0OBBYEFLgrDIAxIVPdjKmjNc26SvFJDN8pMB8GA1UdIwQYMBaAFLvUkIVY3anl"
-                + "\njqOTlp7AR5hgNEMeMA0GCSqGSIb3DQEBCwUAA4IBAQCFcihua8HN8p4oh2/rgsWT"
-                + "\n/5Oz1BvXkFy4Wtrd5bw2DoMiHZTstvGfYuLTAco0v/UqNi6zqqNVhGrhZ0sCBg7s"
-                + "\njT6hn3gIB1dmruDjmVE294XdmLzNg0BWT0F7AHhLPj0HZn1tQpBOWX19FU6nRQq/"
-                + "\nbFNvdnCK1XCj9TEMvb+jGJkPkXH5iz1oXxBnCGw8REERF2VFPWBsuzz11KtpOePM"
-                + "\nBo3OyBjE4x25yQPd6GCoapy5/KwA1D3TgrDJrhQcF/j/4XpNxIKiN8t5ONgVY+DC"
-                + "\nFY4RQka4JGmfUhRpfZridrbtyWWulH2OZoZVo3p6i+fsiGDjgVnGw5p9KE3snmlL"
-                + "\n-----END CERTIFICATE-----").getBytes(StandardCharsets.UTF_8));
+        when(certificate.getEncoded())
+                .thenReturn(("-----BEGIN CERTIFICATE-----"
+                                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
+                                + "\nBQAwcDELMAkGA1UEBhMCVVMxEzARBgNVBAgMCldhc2hpbmd0b24xEDAOBgNVBAcM"
+                                + "\nB1NlYXR0bGUxEDAOBgNVBAoMB1Rlc3RPcmcxETAPBgNVBAsMCFRlc3RVbml0MRUw"
+                                + "\nEwYDVQQDDAxUZXN0IFJvb3QgQ0EwHhcNMjUxMDAyMTgzODQ2WhcNMjcxMDAyMTgz"
+                                + "\nODQ2WjByMQswCQYDVQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UE"
+                                + "\nBwwHU2VhdHRsZTEQMA4GA1UECgwHVGVzdE9yZzERMA8GA1UECwwIVGVzdFVuaXQx"
+                                + "\nFzAVBgNVBAMMDnRlc3QtbGVhZi1jZXJ0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A"
+                                + "\nMIIBCgKCAQEAvmeFjlmpxFuIU/e4cP3fiIpaV98TBgmdo4z09tfAnm+admD14nnB"
+                                + "\nxqRcvw3Z+gb9l42YQlSyVYQWQ7Um2i9dVqpLlFyEJF0pus/AUgeR4Y9IkhEBUfYe"
+                                + "\nRfED/G2JDlsFhXeoFLAw4ZUh+LUIJswB3stpqp4VQEyEKn05Y1AB6ng8JrUCFIEL"
+                                + "\naPuThd36mf+kL7WIGMUdN1WsnxJUxM1rqY8L8pnMC4t+7PxPXnpYodov9MobIjYj"
+                                + "\nqHE9TI51A0U7vSQNRy2qZ9v3cnr24kNB7DV3FuNfCZGcEhndfMeBly6xDsNAb8Oy"
+                                + "\nUNQkMF6Ftr6cvp0XnYNgLWCBBRx0vDL9rQIDAQABo3wwejAJBgNVHRMEAjAAMA4G"
+                                + "\nA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAUBggrBgEFBQcDAgYIKwYBBQUHAwEwHQYD"
+                                + "\nVR0OBBYEFLgrDIAxIVPdjKmjNc26SvFJDN8pMB8GA1UdIwQYMBaAFLvUkIVY3anl"
+                                + "\njqOTlp7AR5hgNEMeMA0GCSqGSIb3DQEBCwUAA4IBAQCFcihua8HN8p4oh2/rgsWT"
+                                + "\n/5Oz1BvXkFy4Wtrd5bw2DoMiHZTstvGfYuLTAco0v/UqNi6zqqNVhGrhZ0sCBg7s"
+                                + "\njT6hn3gIB1dmruDjmVE294XdmLzNg0BWT0F7AHhLPj0HZn1tQpBOWX19FU6nRQq/"
+                                + "\nbFNvdnCK1XCj9TEMvb+jGJkPkXH5iz1oXxBnCGw8REERF2VFPWBsuzz11KtpOePM"
+                                + "\nBo3OyBjE4x25yQPd6GCoapy5/KwA1D3TgrDJrhQcF/j/4XpNxIKiN8t5ONgVY+DC"
+                                + "\nFY4RQka4JGmfUhRpfZridrbtyWWulH2OZoZVo3p6i+fsiGDjgVnGw5p9KE3snmlL"
+                                + "\n-----END CERTIFICATE-----")
+                        .getBytes(StandardCharsets.UTF_8));
 
         return new X509Identity(certificate, privateKey);
     }
@@ -151,7 +151,8 @@ public class RolesAnywhereCredentialsProviderTest {
         X509Identity identity = createTestIdentity();
 
         // Test invalid trust anchor ARN
-        IllegalArgumentException exception1 = assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException exception1 = assertThrows(
+                IllegalArgumentException.class,
                 () -> RolesAnywhereCredentialsProvider.builder()
                         .identityProvider(() -> identity)
                         .trustAnchorArn("invalid-arn")
@@ -159,13 +160,15 @@ public class RolesAnywhereCredentialsProviderTest {
                         .roleArn(TEST_ROLE_ARN)
                         .region(Region.US_EAST_1)
                         .build());
-        assertEquals("Expected: "
-                + "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>, "
-                + "but got: invalid-arn",
+        assertEquals(
+                "Expected: "
+                        + "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>, "
+                        + "but got: invalid-arn",
                 exception1.getMessage());
 
         // Test invalid profile ARN
-        IllegalArgumentException exception2 = assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException exception2 = assertThrows(
+                IllegalArgumentException.class,
                 () -> RolesAnywhereCredentialsProvider.builder()
                         .identityProvider(() -> identity)
                         .trustAnchorArn(TEST_TRUST_ANCHOR_ARN)
@@ -173,12 +176,14 @@ public class RolesAnywhereCredentialsProviderTest {
                         .roleArn(TEST_ROLE_ARN)
                         .region(Region.US_EAST_1)
                         .build());
-        assertEquals("Expected: "
-                + "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>, but got: invalid-arn",
+        assertEquals(
+                "Expected: "
+                        + "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>, but got: invalid-arn",
                 exception2.getMessage());
 
         // Test invalid role ARN
-        IllegalArgumentException exception3 = assertThrows(IllegalArgumentException.class,
+        IllegalArgumentException exception3 = assertThrows(
+                IllegalArgumentException.class,
                 () -> RolesAnywhereCredentialsProvider.builder()
                         .identityProvider(() -> identity)
                         .trustAnchorArn(TEST_TRUST_ANCHOR_ARN)
@@ -186,7 +191,8 @@ public class RolesAnywhereCredentialsProviderTest {
                         .roleArn("invalid-arn")
                         .region(Region.US_EAST_1)
                         .build());
-        assertEquals("Expected: arn:<partition>:iam::<account>:role/<role-name>, but got: invalid-arn",
+        assertEquals(
+                "Expected: arn:<partition>:iam::<account>:role/<role-name>, but got: invalid-arn",
                 exception3.getMessage());
     }
 
@@ -205,7 +211,8 @@ public class RolesAnywhereCredentialsProviderTest {
                     .durationSeconds(300) // Too short
                     .build();
         });
-        assertEquals("Duration seconds must be between 900 (15 minutes) and 43200 (12 hours), got: 300",
+        assertEquals(
+                "Duration seconds must be between 900 (15 minutes) and 43200 (12 hours), got: 300",
                 exception1.getMessage());
 
         // Test invalid duration (too long)
@@ -219,7 +226,8 @@ public class RolesAnywhereCredentialsProviderTest {
                     .durationSeconds(50000) // Too long
                     .build();
         });
-        assertEquals("Duration seconds must be between 900 (15 minutes) and 43200 (12 hours), got: 50000",
+        assertEquals(
+                "Duration seconds must be between 900 (15 minutes) and 43200 (12 hours), got: 50000",
                 exception2.getMessage());
     }
 
@@ -252,8 +260,8 @@ public class RolesAnywhereCredentialsProviderTest {
         when(mockHttpResponse.httpResponse()).thenReturn(mockSdkHttpResponse);
         when(mockSdkHttpResponse.isSuccessful()).thenReturn(true);
         when(mockSdkHttpResponse.statusCode()).thenReturn(201);
-        when(mockHttpResponse.responseBody()).thenReturn(java.util.Optional.of(
-                AbortableInputStream.create(
+        when(mockHttpResponse.responseBody())
+                .thenReturn(java.util.Optional.of(AbortableInputStream.create(
                         new ByteArrayInputStream(mockResponseBody.getBytes(StandardCharsets.UTF_8)))));
         // Create provider with mock HTTP client
         X509Identity identity = createTestIdentity();
@@ -389,12 +397,10 @@ public class RolesAnywhereCredentialsProviderTest {
     public void testWithRealCertificates() throws Exception {
         // This test specifically tries to use the real certificates from integration
         // testing using environment variables or defaults
-        String certPathStr = System.getenv().getOrDefault(
-                "ROLES_ANYWHERE_TEST_CERT_PATH",
-                "src/test/resources/test-cert.pem");
-        String keyPathStr = System.getenv().getOrDefault(
-                "ROLES_ANYWHERE_TEST_KEY_PATH",
-                "src/test/resources/test-key.pkcs8");
+        String certPathStr =
+                System.getenv().getOrDefault("ROLES_ANYWHERE_TEST_CERT_PATH", "src/test/resources/test-cert.pem");
+        String keyPathStr =
+                System.getenv().getOrDefault("ROLES_ANYWHERE_TEST_KEY_PATH", "src/test/resources/test-key.pkcs8");
 
         Path certPath = Paths.get(certPathStr);
         Path keyPath = Paths.get(keyPathStr);
@@ -483,8 +489,8 @@ public class RolesAnywhereCredentialsProviderTest {
                 when(mockHttpResponse.httpResponse()).thenReturn(mockSdkHttpResponse);
                 when(mockSdkHttpResponse.isSuccessful()).thenReturn(true);
                 when(mockSdkHttpResponse.statusCode()).thenReturn(201);
-                when(mockHttpResponse.responseBody()).thenReturn(Optional.of(
-                        AbortableInputStream.create(
+                when(mockHttpResponse.responseBody())
+                        .thenReturn(Optional.of(AbortableInputStream.create(
                                 new ByteArrayInputStream(mockResponseBody.getBytes(StandardCharsets.UTF_8)))));
                 provider.resolveCredentials();
             }
@@ -537,8 +543,8 @@ public class RolesAnywhereCredentialsProviderTest {
                 when(mockHttpResponse.httpResponse()).thenReturn(mockSdkHttpResponse);
                 when(mockSdkHttpResponse.isSuccessful()).thenReturn(true);
                 when(mockSdkHttpResponse.statusCode()).thenReturn(201);
-                when(mockHttpResponse.responseBody()).thenReturn(Optional.of(
-                        AbortableInputStream.create(
+                when(mockHttpResponse.responseBody())
+                        .thenReturn(Optional.of(AbortableInputStream.create(
                                 new ByteArrayInputStream(mockResponseBody.getBytes(StandardCharsets.UTF_8)))));
                 provider.resolveCredentials();
             }
@@ -592,8 +598,8 @@ public class RolesAnywhereCredentialsProviderTest {
         when(mockHttpResponse.httpResponse()).thenReturn(mockSdkHttpResponse);
         when(mockSdkHttpResponse.isSuccessful()).thenReturn(true);
         when(mockSdkHttpResponse.statusCode()).thenReturn(201);
-        when(mockHttpResponse.responseBody()).thenReturn(Optional.of(
-                AbortableInputStream.create(
+        when(mockHttpResponse.responseBody())
+                .thenReturn(Optional.of(AbortableInputStream.create(
                         new ByteArrayInputStream(mockResponseBody.getBytes(StandardCharsets.UTF_8)))));
 
         credentialsProvider.resolveCredentials();
@@ -639,8 +645,8 @@ public class RolesAnywhereCredentialsProviderTest {
             when(mockHttpResponse.httpResponse()).thenReturn(mockSdkHttpResponse);
             when(mockSdkHttpResponse.isSuccessful()).thenReturn(true);
             when(mockSdkHttpResponse.statusCode()).thenReturn(201);
-            when(mockHttpResponse.responseBody()).thenReturn(Optional.of(
-                    AbortableInputStream.create(
+            when(mockHttpResponse.responseBody())
+                    .thenReturn(Optional.of(AbortableInputStream.create(
                             new ByteArrayInputStream(mockResponseBody.getBytes(StandardCharsets.UTF_8)))));
 
             // Call multiple times rapidly — should only hit the service once
@@ -655,16 +661,16 @@ public class RolesAnywhereCredentialsProviderTest {
 
     @Test
     public void testMinRefreshIntervalFloorValidation() {
-        assertThrows(IllegalArgumentException.class, () ->
-                RolesAnywhereCredentialsProvider.builder()
-                        .minRefreshInterval(Duration.ofSeconds(10)));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RolesAnywhereCredentialsProvider.builder().minRefreshInterval(Duration.ofSeconds(10)));
     }
 
     @Test
     public void testMinRefreshIntervalNullValidation() {
-        assertThrows(IllegalArgumentException.class, () ->
-                RolesAnywhereCredentialsProvider.builder()
-                        .minRefreshInterval(null));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RolesAnywhereCredentialsProvider.builder().minRefreshInterval(null));
     }
 
     @Test
@@ -716,9 +722,9 @@ public class RolesAnywhereCredentialsProviderTest {
 
     @Test
     public void testEndpointInvalidUriThrows() {
-        assertThrows(IllegalArgumentException.class, () ->
-                RolesAnywhereCredentialsProvider.builder()
-                        .endpoint("not a valid uri %%%"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> RolesAnywhereCredentialsProvider.builder().endpoint("not a valid uri %%%"));
     }
 
     @Test
