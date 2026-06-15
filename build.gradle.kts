@@ -20,7 +20,7 @@ dependencies {
     implementation("org.apache.httpcomponents:httpclient:4.5.14")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.0")
-    testImplementation("org.mockito:mockito-core:5.22.0")
+    testImplementation("org.mockito:mockito-core:5.23.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.0")
 }
 
