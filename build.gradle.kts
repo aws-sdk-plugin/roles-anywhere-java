@@ -9,13 +9,13 @@ repositories {
 }
 
 dependencies {
-    implementation(platform("software.amazon.awssdk:bom:2.42.32"))
-    implementation("software.amazon.awssdk:rolesanywhere:2.42.32")
-    implementation("software.amazon.awssdk:apache-client:2.42.32")
-    implementation("software.amazon.awssdk:auth:2.42.32")
-    implementation("software.amazon.awssdk:http-auth-spi:2.42.32")
-    implementation("software.amazon.awssdk:arns:2.42.32")
-    implementation("software.amazon.awssdk:json-utils:2.42.32")
+    implementation(platform("software.amazon.awssdk:bom:2.46.13"))
+    implementation("software.amazon.awssdk:rolesanywhere:2.46.13")
+    implementation("software.amazon.awssdk:apache-client:2.46.13")
+    implementation("software.amazon.awssdk:auth:2.46.13")
+    implementation("software.amazon.awssdk:http-auth-spi:2.46.13")
+    implementation("software.amazon.awssdk:arns:2.46.13")
+    implementation("software.amazon.awssdk:json-utils:2.46.13")
 
     implementation("org.apache.httpcomponents:httpclient:4.5.14")
 
