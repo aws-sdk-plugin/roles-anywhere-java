@@ -1,7 +1,7 @@
 plugins {
     `java-library`
     id("code-quality")
-    id("publishing")
+    id("maven-publishing")
 }
 
 repositories {

@@ -19,3 +19,6 @@ Thumbs.db
 *.asc
 secring.gpg
 signing-key.*
+/bin
+/.factorypath
+/buildSrc/.kotlin/errors

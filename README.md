@@ -1,6 +1,6 @@
-# AWS SDK for Java - IAM Roles Anywhere Credentials Provider
+# AWS SDK Plugin for IAM Roles Anywhere
 
-This library provides a credentials provider for AWS IAM Roles Anywhere, enabling applications running outside of AWS to obtain temporary AWS credentials using X.509 certificates instead of long-term access keys.
+An AWS SDK for Java v2 plugin for IAM Roles Anywhere. Sign requests with an X.509 certificate to obtain temporary AWS credentials, without long-term access keys.
 
 ## What Is IAM Roles Anywhere?
 
@@ -10,7 +10,7 @@ AWS IAM Roles Anywhere allows your workloads running outside of AWS (on-premises
 
 **Scenario**: You have an application running on-premises or in another cloud that needs to access AWS services securely without embedding long-term credentials.
 
-**Solution**: Use this credentials provider with X.509 certificates to obtain temporary AWS credentials that automatically rotate.
+**Solution**: Add `RolesAnywherePlugin` to your AWS SDK clients. It calls IAM Roles Anywhere `CreateSession` and supplies temporary, auto-rotating AWS credentials.
 
 ## Quick Start
 
@@ -25,17 +25,16 @@ AWS IAM Roles Anywhere allows your workloads running outside of AWS (on-premises
 ### Basic Usage
 
 ```java
-import software.amazon.awssdk.services.rolesanywhere.auth.RolesAnywhereCredentialsProvider;
-import software.amazon.awssdk.services.rolesanywhere.auth.X509Identity;
-import software.amazon.awssdk.services.rolesanywhere.auth.CertificateUtils;
+import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
+import software.amazon.rolesanywhere.plugin.X509Identity;
+import software.amazon.rolesanywhere.plugin.CertificateUtils;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import java.nio.file.Paths;
 
-// Create the credentials provider
-// The identityProvider lambda loads the certificate and private key on each credential refresh,
-// keeping the private key in memory only for the duration of the signing operation.
-RolesAnywhereCredentialsProvider credentialsProvider = RolesAnywhereCredentialsProvider.builder()
+// Loading the certificate and private key inside the identityProvider lambda
+// limits how long the private key is held in memory.
+RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
     .identityProvider(() -> {
         X509Certificate certificate = CertificateUtils.loadCertificate(Paths.get("path/to/certificate.pem"));
         PrivateKey privateKey = CertificateUtils.loadPrivateKey(Paths.get("path/to/private-key.pem"), "RSA");
@@ -44,25 +43,25 @@ RolesAnywhereCredentialsProvider credentialsProvider = RolesAnywhereCredentialsP
     .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/12345678-1234-1234-1234-123456789012")
     .profileArn("arn:aws:rolesanywhere:us-east-1:123456789012:profile/12345678-1234-1234-1234-123456789012")
     .roleArn("arn:aws:iam::123456789012:role/MyApplicationRole")
-    // .region(Region.US_EAST_1) // Optional - will be inferred from ARNs
+    // .region(Region.US_EAST_1) // Optional - inferred from ARNs
     .build();
 
-// Use with any AWS service client
 S3Client s3Client = S3Client.builder()
-    .credentialsProvider(credentialsProvider)
+    .addPlugin(plugin)
     .region(Region.US_EAST_1)
     .build();
 
-// Now you can make AWS API calls
 s3Client.listBuckets();
 ```
+
+Adding the plugin to a non-AWS SDK client throws `IllegalStateException` at configuration time.
 
 ### Complete Example with Certificate Loading
 
 ```java
-import software.amazon.awssdk.services.rolesanywhere.auth.RolesAnywhereCredentialsProvider;
-import software.amazon.awssdk.services.rolesanywhere.auth.X509Identity;
-import software.amazon.awssdk.services.rolesanywhere.auth.CertificateUtils;
+import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
+import software.amazon.rolesanywhere.plugin.X509Identity;
+import software.amazon.rolesanywhere.plugin.CertificateUtils;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
@@ -73,27 +72,25 @@ import java.security.cert.X509Certificate;
 public class RolesAnywhereExample {
 
     public static void main(String[] args) throws Exception {
-        // Create credentials provider
-        // Loading the certificate and private key inside the identityProvider lambda
-        // minimizes the time the private key is held in memory.
-        RolesAnywhereCredentialsProvider credentialsProvider =
-            RolesAnywhereCredentialsProvider.builder()
-                .identityProvider(() -> {
-                    X509Certificate certificate = CertificateUtils.loadCertificate(Paths.get("client-cert.pem"));
-                    PrivateKey privateKey = CertificateUtils.loadPrivateKey(Paths.get("client-key.pem"), "RSA");
-                    return new X509Identity(certificate, privateKey);
-                })
-                .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-12345")
-                .profileArn("arn:aws:rolesanywhere:us-east-1:123456789012:profile/profile-12345")
-                .roleArn("arn:aws:iam::123456789012:role/MyRole")
-                .roleSessionName("MyApplication")
-                .durationSeconds(3600) // 1 hour
-                // No need to specify .region() - inferred from ARNs
-                .build();
+        // Loading the certificate and private key inside the identityProvider
+        // lambda limits how long the private key is held in memory.
+        RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
+            .identityProvider(() -> {
+                X509Certificate certificate = CertificateUtils.loadCertificate(Paths.get("client-cert.pem"));
+                PrivateKey privateKey = CertificateUtils.loadPrivateKey(Paths.get("client-key.pem"), "RSA");
+                return new X509Identity(certificate, privateKey);
+            })
+            .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-12345")
+            .profileArn("arn:aws:rolesanywhere:us-east-1:123456789012:profile/profile-12345")
+            .roleArn("arn:aws:iam::123456789012:role/MyRole")
+            .roleSessionName("MyApplication")
+            .durationSeconds(3600) // 1 hour
+            // No need to specify .region() - inferred from ARNs
+            .build();
 
-        // Use with AWS services
+        // Add it to AWS clients
         S3Client s3 = S3Client.builder()
-            .credentialsProvider(credentialsProvider)
+            .addPlugin(plugin)
             .build();
 
         // Make API calls
@@ -138,15 +135,40 @@ This means you can often omit the region entirely:
 
 ```java
 // Region will be automatically inferred from ARNs or environment
-RolesAnywhereCredentialsProvider credentialsProvider =
-    RolesAnywhereCredentialsProvider.builder()
-        .identityProvider(() -> identity)
-        .trustAnchorArn("arn:aws:rolesanywhere:eu-west-1:123456789012:trust-anchor/ta-12345")
-        .profileArn("arn:aws:rolesanywhere:eu-west-1:123456789012:profile/profile-12345")
-        .roleArn("arn:aws:iam::123456789012:role/MyRole")
-        // No .region() needed - will use eu-west-1 from ARNs
-        .build();
+RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
+    .identityProvider(() -> identity)
+    .trustAnchorArn("arn:aws:rolesanywhere:eu-west-1:123456789012:trust-anchor/ta-12345")
+    .profileArn("arn:aws:rolesanywhere:eu-west-1:123456789012:profile/profile-12345")
+    .roleArn("arn:aws:iam::123456789012:role/MyRole")
+    // No .region() needed - will use eu-west-1 from ARNs
+    .build();
 ```
+
+## Direct Use of the Credentials Provider
+
+The plugin is the recommended entry point. `RolesAnywhereCredentialsProvider` is also public, for cases where you need an `AwsCredentialsProvider` directly: calling `resolveCredentials()` outside an SDK client, or sharing one provider (and one session cache) across many clients.
+
+```java
+import software.amazon.rolesanywhere.plugin.RolesAnywhereCredentialsProvider;
+import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
+
+RolesAnywhereCredentialsProvider provider = RolesAnywhereCredentialsProvider.builder()
+    .identityProvider(() -> identity)
+    .trustAnchorArn(/* ... */)
+    .profileArn(/* ... */)
+    .roleArn(/* ... */)
+    .build();
+
+// Use it directly...
+AwsCredentials creds = provider.resolveCredentials();
+
+// ...or wrap it in a plugin to share across clients
+RolesAnywherePlugin plugin = RolesAnywherePlugin.create(provider);
+S3Client s3 = S3Client.builder().addPlugin(plugin).build();
+DynamoDbClient ddb = DynamoDbClient.builder().addPlugin(plugin).build();
+```
+
+One shared provider gives all clients a single `CreateSession` exchange and a single credential cache. Calling `RolesAnywherePlugin.builder()...build()` per client creates a separate provider (and cache) each time.
 
 ## Certificate Chain Support
 
@@ -162,9 +184,9 @@ X509Identity identity = new X509Identity(leafCertificate, privateKey, intermedia
 For certificates issued by [AWS Private CA](https://docs.aws.amazon.com/privateca/latest/userguide/), you can use the `X509IdentityProvider` to dynamically issue and load short-lived certificates. This keeps the private key in memory only during credential signing and handles errors gracefully via `IdentityProviderException`.
 
 ```java
-import software.amazon.awssdk.services.rolesanywhere.auth.RolesAnywhereCredentialsProvider;
-import software.amazon.awssdk.services.rolesanywhere.auth.X509Identity;
-import software.amazon.awssdk.services.rolesanywhere.auth.IdentityProviderException;
+import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
+import software.amazon.rolesanywhere.plugin.X509Identity;
+import software.amazon.rolesanywhere.plugin.IdentityProviderException;
 import software.amazon.awssdk.services.acmpca.AcmPcaClient;
 import software.amazon.awssdk.services.acmpca.model.*;
 import software.amazon.awssdk.services.acmpca.waiters.AcmPcaWaiter;
@@ -180,8 +202,8 @@ AcmPcaClient pcaClient = AcmPcaClient.builder()
     .region(Region.US_EAST_1)
     .build();
 
-// Create the credentials provider with ACM PCA-issued certificates
-RolesAnywhereCredentialsProvider credentialsProvider = RolesAnywhereCredentialsProvider.builder()
+// Build the plugin with ACM PCA-issued certificates
+RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
     .identityProvider(() -> {
         try {
             // Generate a fresh key pair — private key stays local to this lambda

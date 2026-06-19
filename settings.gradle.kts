@@ -3,4 +3,4 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-rootProject.name = "rolesanywhere-java-credentials-provider"
+rootProject.name = "roles-anywhere-java"
