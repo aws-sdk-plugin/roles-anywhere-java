@@ -8,7 +8,12 @@ repositories {
 }
 
 dependencies {
-    implementation("com.diffplug.spotless:spotless-plugin-gradle:7.0.2")
-    implementation("net.ltgt.gradle:gradle-errorprone-plugin:4.1.0")
-    implementation("com.github.spotbugs.snom:spotbugs-gradle-plugin:6.1.2")
+    // Expose the type-safe `libs` accessor inside precompiled script plugins
+    // (see code-quality.gradle.kts). This is the documented workaround for a
+    // long-standing Gradle limitation.
+    implementation(files(libs.javaClass.superclass.protectionDomain.codeSource.location))
+
+    implementation(libs.spotless.plugin)
+    implementation(libs.errorprone.plugin)
+    implementation(libs.spotbugs.plugin)
 }

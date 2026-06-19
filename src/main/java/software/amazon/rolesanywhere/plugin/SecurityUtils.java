@@ -2,6 +2,7 @@ package software.amazon.rolesanywhere.plugin;
 
 import java.lang.invoke.VarHandle;
 import java.util.Arrays;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 
 /**
  * Best-effort utility for clearing sensitive data from memory.
@@ -27,7 +28,8 @@ import java.util.Arrays;
  * }
  * }</pre>
  */
-public final class SecurityUtils {
+@SdkInternalApi
+final class SecurityUtils {
 
     private SecurityUtils() {
         // Utility class

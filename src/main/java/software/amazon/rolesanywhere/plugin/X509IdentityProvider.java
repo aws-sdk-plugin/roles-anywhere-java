@@ -1,9 +1,12 @@
 package software.amazon.rolesanywhere.plugin;
 
+import software.amazon.awssdk.annotations.SdkPublicApi;
+
 /**
  * This X509IdentityProvider class that lets library users implement code for how
  * they want to fetch their certificates and private keys.
  */
+@SdkPublicApi
 @FunctionalInterface
 public interface X509IdentityProvider {
     /**

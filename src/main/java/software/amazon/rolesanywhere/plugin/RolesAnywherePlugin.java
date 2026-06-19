@@ -2,6 +2,9 @@ package software.amazon.rolesanywhere.plugin;
 
 import java.net.URI;
 import java.time.Duration;
+import software.amazon.awssdk.annotations.NotThreadSafe;
+import software.amazon.awssdk.annotations.SdkPublicApi;
+import software.amazon.awssdk.annotations.ThreadSafe;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.awscore.AwsServiceClientConfiguration;
 import software.amazon.awssdk.core.SdkPlugin;
@@ -9,6 +12,8 @@ import software.amazon.awssdk.core.SdkServiceClientConfiguration;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.regions.Region;
 
+@SdkPublicApi
+@ThreadSafe
 public final class RolesAnywherePlugin implements SdkPlugin {
     private final RolesAnywhereCredentialsProvider rolesAnywhereCredentialsProvider;
 
@@ -31,9 +36,7 @@ public final class RolesAnywherePlugin implements SdkPlugin {
      * fresh construction, use {@link #builder()}.
      */
     public static RolesAnywherePlugin create(RolesAnywhereCredentialsProvider provider) {
-        if (provider == null) {
-            throw new IllegalArgumentException("provider must not be null");
-        }
+        ValidationUtils.requireParameter(provider, "RolesAnywhereCredentialsProvider");
         return new RolesAnywherePlugin(provider);
     }
 
@@ -46,6 +49,8 @@ public final class RolesAnywherePlugin implements SdkPlugin {
      * {@link RolesAnywhereCredentialsProvider.Builder}; the underlying provider
      * is constructed at {@link #build()} time and validation flows from there.
      */
+    @SdkPublicApi
+    @NotThreadSafe
     public static final class Builder {
         private final RolesAnywhereCredentialsProvider.Builder providerBuilder =
                 RolesAnywhereCredentialsProvider.builder();

@@ -3,6 +3,7 @@ package software.amazon.rolesanywhere.plugin;
 import java.security.PrivateKey;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 
 /**
  * Utility class for common validation operations used throughout the Roles
@@ -10,6 +11,7 @@ import java.security.cert.X509Certificate;
  * Provides consistent error messages and validation logic to eliminate code
  * duplication.
  */
+@SdkInternalApi
 final class ValidationUtils {
 
     private ValidationUtils() {

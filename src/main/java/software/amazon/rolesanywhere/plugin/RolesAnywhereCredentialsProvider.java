@@ -1,23 +1,44 @@
 package software.amazon.rolesanywhere.plugin;
 
 import java.net.URI;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
+import software.amazon.awssdk.annotations.NotThreadSafe;
+import software.amazon.awssdk.annotations.SdkPublicApi;
+import software.amazon.awssdk.annotations.ThreadSafe;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.utils.Logger;
+import software.amazon.awssdk.utils.SdkAutoCloseable;
+import software.amazon.awssdk.utils.cache.CachedSupplier;
+import software.amazon.awssdk.utils.cache.NonBlocking;
+import software.amazon.awssdk.utils.cache.RefreshResult;
 
 /**
  * AWS Credentials Provider for IAM Roles Anywhere.
  * This provider obtains temporary credentials using IAM Roles Anywhere service.
- * Usage:
+ *
+ * <p>
+ * Caching and refresh are delegated to {@link CachedSupplier} from the AWS SDK,
+ * the same primitive that backs {@code InstanceProfileCredentialsProvider},
+ * {@code ContainerCredentialsProvider}, and {@code StsCredentialsProvider}.
+ * {@code CachedSupplier}, {@link RefreshResult}, {@link NonBlocking}, and
+ * {@code StaleValueBehavior} are annotated {@code @SdkProtectedApi} — semi-stable
+ * across SDK minor versions. We accept that contract because every SDK-provided
+ * credentials provider relies on it, which gives the SDK team strong incentive
+ * not to break it; if it ever does shift, this class fails at compile time
+ * during a BOM bump rather than silently.
+ *
+ * <p>Usage:
  *
  * <pre>{@code
  * // Create the provider — load certificate and key inside the lambda to minimize
@@ -43,7 +64,9 @@ import software.amazon.awssdk.utils.Logger;
  * client.listTrustAnchors(listTrustAnchorRequest);
  * }</pre>
  */
-public final class RolesAnywhereCredentialsProvider implements AwsCredentialsProvider {
+@SdkPublicApi
+@ThreadSafe
+public final class RolesAnywhereCredentialsProvider implements AwsCredentialsProvider, SdkAutoCloseable {
     private static final Logger LOG = Logger.loggerFor(RolesAnywhereCredentialsProvider.class);
 
     // HTTP client configuration
@@ -53,6 +76,7 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     // Credential refresh configuration
     private static final Duration DEFAULT_MIN_REFRESH_INTERVAL = Duration.ofMinutes(5);
     private static final Duration MIN_REFRESH_INTERVAL_FLOOR = Duration.ofSeconds(30);
+    private static final String REFRESH_THREAD_NAME = "rolesanywhere-credentials-refresh";
 
     // IAM Roles Anywhere session configuration
     private final X509IdentityProvider identityProvider;
@@ -68,12 +92,22 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     private final boolean fipsEnabled;
     private final boolean dualStackEnabled;
     private final SdkHttpClient httpClient;
+    private final boolean ownedHttpClient;
 
     // Credential cache and refresh settings
-    private AwsCredentials cachedCredentials;
     private final Duration staleTime;
     private final Duration minRefreshInterval;
-    private Instant lastRefreshTime = Instant.EPOCH;
+    private final CachedSupplier<AwsCredentials> credentialsCache;
+
+    // Throttle state — guards the refresh function so a failing supplier cannot
+    // burn the network at the rate CachedSupplier asks for. CachedSupplier uses
+    // a tryLock(5s) around supplier invocation, so concurrent calls into the
+    // refresh function are rare-but-possible if a refresh runs longer than 5s
+    // (network I/O can). volatile gives visibility; the read-modify-write race
+    // can let two refreshes through instead of one — benign, since the worst
+    // case is a single redundant network call, which the throttle exists to
+    // prevent at scale rather than absolutely.
+    private volatile Instant lastRefreshAttempt = Instant.EPOCH;
 
     private RolesAnywhereCredentialsProvider(Builder builder) {
         this.identityProvider = builder.identityProvider;
@@ -88,11 +122,22 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         this.dualStackEnabled = builder.dualStackEnabled;
         if (builder.httpClient != null) {
             this.httpClient = builder.httpClient;
+            this.ownedHttpClient = false;
         } else {
             this.httpClient = createDefaultHttpClient();
+            this.ownedHttpClient = true;
         }
         this.staleTime = builder.staleTime;
         this.minRefreshInterval = builder.minRefreshInterval;
+        // StaleValueBehavior.ALLOW is the static-stability mode: when refresh fails
+        // past staleTime, the previously-cached value is still served (with jittered
+        // backoff). The default STRICT would throw, which is the opposite of what
+        // IAM Roles Anywhere wants — service-side enforcement is the source of truth
+        // for credential validity.
+        this.credentialsCache = CachedSupplier.builder(this::refreshCredentials)
+                .prefetchStrategy(new NonBlocking(REFRESH_THREAD_NAME))
+                .staleValueBehavior(CachedSupplier.StaleValueBehavior.ALLOW)
+                .build();
     }
 
     /**
@@ -102,14 +147,6 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
      */
     public static Builder builder() {
         return new Builder();
-    }
-
-    /**
-     * Builds and returns the default RolesAnywhereCredentialsProvider
-     * @return the default RolesAnywhereCredentialsProvider
-     */
-    public static RolesAnywhereCredentialsProvider create() {
-        return new Builder().build();
     }
 
     private X509Identity getIdentity() throws IdentityProviderException {
@@ -127,14 +164,14 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         Instant expiryHorizon = Instant.now().plus(Duration.ofDays(30));
         warnIfExpiringSoon(resolved.certificate(), "leaf", expiryHorizon);
         int index = 0;
-        for (java.security.cert.X509Certificate intermediate : resolved.certificateChain()) {
+        for (X509Certificate intermediate : resolved.certificateChain()) {
             warnIfExpiringSoon(intermediate, "chain[" + index + "]", expiryHorizon);
             index++;
         }
         return resolved;
     }
 
-    private void warnIfExpiringSoon(java.security.cert.X509Certificate cert, String label, Instant horizon) {
+    private void warnIfExpiringSoon(X509Certificate cert, String label, Instant horizon) {
         Instant notAfter = cert.getNotAfter().toInstant();
         if (horizon.isAfter(notAfter)) {
             LOG.warn(() -> "X.509 certificate (" + label
@@ -145,30 +182,36 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     }
 
     /**
-     * Resolves AWS credentials for IAM Roles Anywhere.
-     *
-     * @return AwsCredentials containing access key, secret key, and session token
-     * @throws RuntimeException wrapping an IdentityProviderException
-     *         if the identity provider fails to supply an identity
+     * Resolves AWS credentials for IAM Roles Anywhere. Delegates entirely to
+     * {@link CachedSupplier}; cache state, refresh scheduling, concurrency,
+     * and stale-value handling all live there.
      */
     @Override
-    public synchronized AwsCredentials resolveCredentials() {
-        // Use cache if creds and expiration time is available
-        if (this.cachedCredentials != null
-                && this.cachedCredentials.expirationTime().isPresent()) {
-            // and if it is too early to refresh
-            if (Instant.now()
-                    .plus(staleTime)
-                    .isBefore(this.cachedCredentials.expirationTime().get())) {
-                return this.cachedCredentials;
-            }
+    public AwsCredentials resolveCredentials() {
+        return credentialsCache.get();
+    }
+
+    /**
+     * Refresh function handed to {@link CachedSupplier}. Returns a
+     * {@link RefreshResult} whose {@code prefetchTime} is the expiration minus
+     * the configured {@code staleTime} (background refresh kicks off there) and
+     * whose {@code staleTime} is the credential expiration itself. Past that,
+     * {@code StaleValueBehavior.ALLOW} keeps serving the cached value while we
+     * keep retrying — the service is the source of truth for expiry.
+     *
+     * <p>The {@code minRefreshInterval} throttle is enforced here: if a refresh
+     * attempt fails inside the throttle window, we throw, and the cache (under
+     * {@code ALLOW}) serves the stale value instead of pounding the network.
+     */
+    private RefreshResult<AwsCredentials> refreshCredentials() {
+        Instant now = Instant.now();
+        Instant nextAllowedRefresh = lastRefreshAttempt.plus(minRefreshInterval);
+        if (now.isBefore(nextAllowedRefresh)) {
+            throw SdkClientException.create("Refresh throttled — minimum refresh interval " + minRefreshInterval
+                    + " not yet elapsed since last refresh attempt at " + lastRefreshAttempt + ".");
         }
-        // Enforce minimum credential refresh interval to prevent retry storms
-        if (this.cachedCredentials != null && Instant.now().isBefore(lastRefreshTime.plus(minRefreshInterval))) {
-            return this.cachedCredentials;
-        }
-        // Otherwise call create session to refresh
-        this.lastRefreshTime = Instant.now(); // throttle even on failure
+        lastRefreshAttempt = now;
+
         X509Signer signer = X509Signer.builder()
                 .region(this.region)
                 .serviceName("rolesanywhere")
@@ -178,11 +221,27 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         try {
             sr = signer.sign(request, this.getIdentity());
         } catch (IdentityProviderException e) {
-            throw new RuntimeException(e);
+            // Wrap as SdkClientException for consistency with the rest of the
+            // package (CreateSessionRequestUtils, etc.) and to mark this as an
+            // operational failure rather than a programming bug.
+            throw SdkClientException.builder()
+                    .message("Failed to load X.509 identity for IAM Roles Anywhere")
+                    .cause(e)
+                    .build();
         }
         String responseBody = CreateSessionRequestUtils.executeHttpRequest(request, sr, this.httpClient);
-        this.cachedCredentials = CreateSessionRequestUtils.parseCreateSessionResponse(responseBody);
-        return cachedCredentials;
+        AwsCredentials credentials = CreateSessionRequestUtils.parseCreateSessionResponse(responseBody);
+
+        Instant expiration = credentials.expirationTime().orElse(null);
+        if (expiration == null) {
+            // Service always returns an expiration; absence is a contract violation.
+            throw SdkClientException.create("IAM Roles Anywhere returned credentials with no expiration time.");
+        }
+        Instant prefetch = expiration.minus(staleTime);
+        return RefreshResult.builder(credentials)
+                .prefetchTime(prefetch)
+                .staleTime(expiration)
+                .build();
     }
 
     /**
@@ -213,6 +272,19 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     }
 
     /**
+     * Releases resources owned by this provider: the {@link CachedSupplier}'s
+     * background refresh thread is always closed; the HTTP client is closed
+     * only when the provider created it (per {@code PBP_JAVA_CLOSE_IFF_OWNED}).
+     */
+    @Override
+    public void close() {
+        credentialsCache.close();
+        if (ownedHttpClient) {
+            httpClient.close();
+        }
+    }
+
+    /**
      * Creates a default HTTP client with appropriate timeout configuration.
      *
      * @return Configured SdkHttpClient
@@ -228,6 +300,8 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
      * Builder class for RolesAnywhereCredentialsProvider with fluent API.
      * All functions on this {@link Builder} should also be present on the {@link RolesAnywherePlugin.Builder} class.
      */
+    @SdkPublicApi
+    @NotThreadSafe
     public static final class Builder {
         // IAM Roles Anywhere session configuration
         private X509IdentityProvider identityProvider;
@@ -300,12 +374,10 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param identityProvider The X509IdentityProvider for authentication
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code identityProvider} is null
          */
         public Builder identityProvider(X509IdentityProvider identityProvider) {
-            if (identityProvider == null) {
-                this.identityProvider = null;
-                return this;
-            }
+            ValidationUtils.requireParameter(identityProvider, "X509IdentityProvider");
             this.identityProvider = identityProvider;
             return this;
         }
@@ -315,13 +387,11 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param trustAnchorArn The ARN string of the trust anchor
          * @return This builder instance
-         * @throws IllegalArgumentException if the ARN format is invalid
+         * @throws IllegalArgumentException if {@code trustAnchorArn} is null, blank,
+         *                                  or not a valid trust anchor ARN
          */
         public Builder trustAnchorArn(String trustAnchorArn) {
-            if (ValidationUtils.nullOrEmpty(trustAnchorArn)) {
-                this.trustAnchorArn = null;
-                return this;
-            }
+            ValidationUtils.requireNonNullAndNonEmpty(trustAnchorArn, "Trust anchor ARN");
             this.trustAnchorArn = ArnValidator.validateTrustAnchorArn(trustAnchorArn);
             return this;
         }
@@ -331,8 +401,10 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param trustAnchorArn The Arn object of the trust anchor
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code trustAnchorArn} is null
          */
         public Builder trustAnchorArn(Arn trustAnchorArn) {
+            ValidationUtils.requireParameter(trustAnchorArn, "Trust anchor ARN");
             this.trustAnchorArn = trustAnchorArn;
             return this;
         }
@@ -342,13 +414,11 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param profileArn The ARN string of the profile
          * @return This builder instance
-         * @throws IllegalArgumentException if the ARN format is invalid
+         * @throws IllegalArgumentException if {@code profileArn} is null, blank, or
+         *                                  not a valid profile ARN
          */
         public Builder profileArn(String profileArn) {
-            if (profileArn == null || profileArn.trim().isEmpty()) {
-                this.profileArn = null;
-                return this;
-            }
+            ValidationUtils.requireNonNullAndNonEmpty(profileArn, "Profile ARN");
             this.profileArn = ArnValidator.validateProfileArn(profileArn);
             return this;
         }
@@ -358,8 +428,10 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param profileArn The Arn object of the profile
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code profileArn} is null
          */
         public Builder profileArn(Arn profileArn) {
+            ValidationUtils.requireParameter(profileArn, "Profile ARN");
             this.profileArn = profileArn;
             return this;
         }
@@ -369,13 +441,11 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param roleArn The ARN string of the role to assume
          * @return This builder instance
-         * @throws IllegalArgumentException if the ARN format is invalid
+         * @throws IllegalArgumentException if {@code roleArn} is null, blank, or
+         *                                  not a valid role ARN
          */
         public Builder roleArn(String roleArn) {
-            if (roleArn == null || roleArn.trim().isEmpty()) {
-                this.roleArn = null;
-                return this;
-            }
+            ValidationUtils.requireNonNullAndNonEmpty(roleArn, "Role ARN");
             this.roleArn = ArnValidator.validateRoleArn(roleArn);
             return this;
         }
@@ -385,8 +455,10 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param roleArn The Arn object of the role to assume
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code roleArn} is null
          */
         public Builder roleArn(Arn roleArn) {
+            ValidationUtils.requireParameter(roleArn, "Role ARN");
             this.roleArn = roleArn;
             return this;
         }
@@ -403,12 +475,21 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
 
         /**
-         * Sets the role session name.
+         * Sets the role session name. Pass {@code null} to clear a previously-set
+         * value and let the IAM Roles Anywhere service pick a default; do not pass
+         * an empty or whitespace-only string.
          *
-         * @param roleSessionName The session name for the assumed role
+         * @param roleSessionName The session name for the assumed role, or null to
+         *                        let the service choose
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code roleSessionName} is non-null
+         *                                  and blank
          */
         public Builder roleSessionName(String roleSessionName) {
+            if (roleSessionName != null && roleSessionName.trim().isEmpty()) {
+                throw new IllegalArgumentException("roleSessionName cannot be empty or whitespace-only "
+                        + "(pass null to use the service default)");
+            }
             this.roleSessionName = roleSessionName;
             return this;
         }
@@ -427,18 +508,24 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
 
         /**
-         * Sets a custom endpoint URI for the IAM Roles Anywhere service.
+         * Sets a custom endpoint URI for the IAM Roles Anywhere service. Pass
+         * {@code null} to clear a previously-set value and fall back to
+         * region/FIPS/dual-stack-derived endpoint resolution.
          *
          * <p>
          * When a custom endpoint is provided, it takes precedence over all other
          * endpoint configuration options (FIPS, dual-stack).
          *
-         * @param endpoint The custom endpoint URI
+         * @param endpoint The custom endpoint URI, or null to use derived resolution
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code endpoint} is non-null and has
+         *                                  no host (e.g., {@code URI.create("")})
          */
         public Builder endpoint(URI endpoint) {
-            this.customEndpoint = endpoint;
             if (endpoint != null) {
+                if (endpoint.getHost() == null) {
+                    throw new IllegalArgumentException("Custom endpoint URI must have a host, got: " + endpoint);
+                }
                 String scheme = endpoint.getScheme();
                 if (scheme != null && !scheme.equalsIgnoreCase("https")) {
                     LOG.warn(() -> "Custom endpoint uses '" + scheme
@@ -448,23 +535,31 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
                             + "sent in plaintext over " + scheme.toUpperCase(Locale.ROOT) + ".");
                 }
             }
+            this.customEndpoint = endpoint;
             return this;
         }
 
         /**
-         * Sets a custom endpoint URI for the IAM Roles Anywhere service.
+         * Sets a custom endpoint URI for the IAM Roles Anywhere service. Pass
+         * {@code null} to clear a previously-set value and fall back to
+         * region/FIPS/dual-stack-derived endpoint resolution.
          *
          * <p>
          * When a custom endpoint is provided, it takes precedence over all other
          * endpoint configuration options (FIPS, dual-stack).
          *
-         * @param endpoint The custom endpoint URI as a string
+         * @param endpoint The custom endpoint URI as a string, or null to use
+         *                 derived resolution
          * @return This builder instance
-         * @throws IllegalArgumentException if the string is not a valid URI
+         * @throws IllegalArgumentException if {@code endpoint} is blank, not a
+         *                                  valid URI, or has no host
          */
         public Builder endpoint(String endpoint) {
             if (endpoint == null) {
                 return endpoint((URI) null);
+            }
+            if (endpoint.trim().isEmpty()) {
+                throw new IllegalArgumentException("endpoint cannot be empty or whitespace-only (pass null to clear)");
             }
             try {
                 return endpoint(URI.create(endpoint));
@@ -519,12 +614,13 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
 
         /**
-         * Defines how early before AWS credential expiration a refresh should be attempted.
-         * For example, with a 5-minute stale time and credentials expiring at 2:00 PM,
-         * a refresh will be triggered at 1:55 PM. This does NOT affect the X509Identity
-         * or how often the identityProvider is called — it only controls when cached
-         * AWS credentials (access key, secret key, session token) are considered stale.
-         * Must not be a negative duration. Defaults to 5 minutes.
+         * Defines how early before AWS credential expiration a background refresh
+         * should be attempted. With a 5-minute stale time and credentials expiring
+         * at 2:00 PM, the background refresh starts at 1:55 PM. Maps to
+         * {@link RefreshResult}'s {@code prefetchTime} (= expiration − staleTime);
+         * the credentials' {@code expirationTime} itself is the {@code staleTime}
+         * passed to {@link CachedSupplier}. Must not be negative. Defaults to 5
+         * minutes.
          *
          * @param staleTime duration before AWS credential expiration to trigger refresh
          * @return This builder instance
@@ -541,15 +637,20 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
 
         /**
-         * Sets the minimum interval between credential refresh cycles. Each cycle
-         * calls the X509IdentityProvider and the IAM Roles Anywhere service. This
-         * prevents retry storms when credentials are expired or the identity provider
-         * is failing — even if AWS credentials are stale, a new refresh will not be
-         * attempted until this interval has elapsed since the last refresh attempt.
-         * Defaults to 5 minutes. Cannot be less than 30 seconds
-         * (use Duration.ZERO to disable).
+         * Sets the minimum interval between credential refresh attempts. This
+         * prevents retry storms when the X509IdentityProvider or the IAM Roles
+         * Anywhere service is failing — even if AWS credentials are stale, a new
+         * refresh is not attempted until this interval has elapsed since the last
+         * attempt. Defaults to 5 minutes. Cannot be less than 30 seconds (use
+         * Duration.ZERO to disable).
          *
-         * @param minRefreshInterval minimum duration between refresh cycles
+         * <p>The throttle is enforced inside the refresh function handed to
+         * {@link CachedSupplier}: throttled attempts throw, and {@code
+         * StaleValueBehavior.ALLOW} causes the cache to keep serving the
+         * previously-cached credentials. On cold start with no cached value, a
+         * throttled attempt propagates as {@link SdkClientException}.
+         *
+         * @param minRefreshInterval minimum duration between refresh attempts
          * @return This builder instance
          */
         public Builder minRefreshInterval(Duration minRefreshInterval) {
@@ -569,24 +670,27 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          * Builds the RolesAnywhereCredentialsProvider instance.
          *
          * @return A configured RolesAnywhereCredentialsProvider
-         * @throws IllegalArgumentException if required parameters are missing or
-         *                                  invalid
+         * @throws IllegalArgumentException if a required parameter setter was
+         *                                  never called, or if durationSeconds is
+         *                                  outside the valid range
          */
         public RolesAnywhereCredentialsProvider build() {
             region = resolveRegion();
-            validateRequiredParameters();
-            ValidationUtils.validateSessionDuration(durationSeconds);
-            return new RolesAnywhereCredentialsProvider(this);
-        }
-
-        private void validateRequiredParameters() {
+            // Setters reject bad input, so the only way these are still null is
+            // that the customer never called the setter. Surface that with a
+            // clear message rather than letting a NullPointerException leak out
+            // of the constructor or refresh function.
             ValidationUtils.requireParameter(identityProvider, "X509IdentityProvider");
             ValidationUtils.requireParameter(trustAnchorArn, "Trust anchor ARN");
             ValidationUtils.requireParameter(profileArn, "Profile ARN");
             ValidationUtils.requireParameter(roleArn, "Role ARN");
-            // this should never be thrown but is here for sanity checking
+            // region is set by resolveRegion() above; this is a sanity check.
             ValidationUtils.requireParameter(region, "Region");
+            // staleTime has a default and the setter rejects null, so this
+            // can only fail through reflection. Sanity check.
             ValidationUtils.requireParameter(staleTime, "staleTime");
+            ValidationUtils.validateSessionDuration(durationSeconds);
+            return new RolesAnywhereCredentialsProvider(this);
         }
     }
 }

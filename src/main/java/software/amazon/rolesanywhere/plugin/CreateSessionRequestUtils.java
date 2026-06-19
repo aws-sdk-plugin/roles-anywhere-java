@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkServiceException;
@@ -20,6 +21,7 @@ import software.amazon.awssdk.protocols.jsoncore.JsonNode;
  * Utility class for executing HTTP requests and handling responses for IAM
  * Roles Anywhere operations.
  */
+@SdkInternalApi
 final class CreateSessionRequestUtils {
 
     static final String UNPARSEABLE_RESPONSE_MESSAGE = "Service returned an error response that could not be parsed";

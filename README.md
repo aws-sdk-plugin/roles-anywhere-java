@@ -1,6 +1,6 @@
-# AWS SDK Plugin for IAM Roles Anywhere
+# IAM Roles Anywhere Plugin for AWS SDK for Java
 
-An AWS SDK for Java v2 plugin for IAM Roles Anywhere. Sign requests with an X.509 certificate to obtain temporary AWS credentials, without long-term access keys.
+The IAM Roles Anywhere Plugin for AWS SDK for Java is an AWS SDK for Java v2 plugin for IAM Roles Anywhere. Sign requests with an X.509 certificate to obtain temporary AWS credentials, without long-term access keys.
 
 ## What Is IAM Roles Anywhere?
 
@@ -279,9 +279,9 @@ PrivateKey mldsaKey = CertificateUtils.loadPrivateKey(Paths.get("mldsa-key.pem")
 The provider validates all inputs and throws descriptive exceptions:
 
 - `IllegalArgumentException`: Invalid ARNs, missing required parameters
-- `IdentityProviderException`: The identity provider failed to create an identity (e.g., certificate store unavailable, HSM error). Wrapped in `RuntimeException` when thrown during `resolveCredentials()` — retrieve via `getCause()`
-- `CertificateEncodingException`: Invalid or expired certificates
-- `RuntimeException`: Network errors, invalid responses from AWS, or wrapped `IdentityProviderException`
+- `IdentityProviderException`: The identity provider failed to create an identity (e.g., certificate store unavailable, HSM error). Wrapped in `SdkClientException` when surfaced from `resolveCredentials()` — retrieve via `getCause()`
+- `SdkClientException`: Network errors, invalid responses from AWS, or wrapped `IdentityProviderException`
+- `SdkServiceException`: IAM Roles Anywhere returned an error response. Includes expired or otherwise invalid certificates (validated server-side as part of `CreateSession`)
 
 ## Security Best Practices
 

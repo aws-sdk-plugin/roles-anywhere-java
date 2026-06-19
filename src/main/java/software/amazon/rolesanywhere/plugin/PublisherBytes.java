@@ -3,13 +3,12 @@ package software.amazon.rolesanywhere.plugin;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.reactivestreams.Publisher;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 
 /**
  * Utility class for converting between byte arrays and reactive
@@ -17,21 +16,24 @@ import org.reactivestreams.Subscription;
  *
  * <p>Provides two complementary operations:
  * <ul>
- *   <li>{@link #collect(Publisher)} — consumes a publisher and returns the concatenated bytes</li>
+ *   <li>{@link #collectAsync(Publisher)} — subscribes and returns a future that
+ *       completes with the concatenated bytes when the publisher does</li>
  *   <li>{@link #toPublisher(byte[])} — wraps a byte array into a single-element publisher</li>
  * </ul>
  */
+@SdkInternalApi
 final class PublisherBytes {
-
-    private static final long COLLECT_TIMEOUT_SECONDS = 30;
 
     private PublisherBytes() {}
 
     /**
-     * Subscribe to the publisher, collect every emitted {@link ByteBuffer},
-     * and return the concatenated bytes. Blocks until onComplete or onError.
+     * Subscribe to the publisher and return a {@link CompletableFuture} that
+     * completes with the concatenated bytes when the publisher signals
+     * {@code onComplete}, or completes exceptionally on {@code onError}. Does
+     * not block — the caller composes on the returned future (via
+     * {@code thenApply} / {@code thenCompose}).
      */
-    static byte[] collect(Publisher<ByteBuffer> publisher) {
+    static CompletableFuture<byte[]> collectAsync(Publisher<ByteBuffer> publisher) {
         CompletableFuture<byte[]> future = new CompletableFuture<>();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         AtomicReference<Subscription> subscriptionRef = new AtomicReference<>();
@@ -69,22 +71,7 @@ final class PublisherBytes {
                 future.complete(buffer.toByteArray());
             }
         });
-        try {
-            return future.get(COLLECT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            future.completeExceptionally(e);
-            cancelSubscription(subscriptionRef);
-            Thread.currentThread().interrupt();
-            throw new RuntimeException("Failed to collect async payload bytes", e);
-        } catch (ExecutionException e) {
-            cancelSubscription(subscriptionRef);
-            Throwable cause = e.getCause() != null ? e.getCause() : e;
-            throw new RuntimeException("Failed to collect async payload bytes", cause);
-        } catch (Exception e) {
-            future.completeExceptionally(e);
-            cancelSubscription(subscriptionRef);
-            throw new RuntimeException("Failed to collect async payload bytes", e);
-        }
+        return future;
     }
 
     /**

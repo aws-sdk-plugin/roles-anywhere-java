@@ -15,25 +15,18 @@ import java.security.interfaces.RSAPrivateKey;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.http.message.BasicNameValuePair;
+import software.amazon.awssdk.annotations.Immutable;
+import software.amazon.awssdk.annotations.NotThreadSafe;
+import software.amazon.awssdk.annotations.SdkInternalApi;
+import software.amazon.awssdk.annotations.ThreadSafe;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
-import software.amazon.awssdk.http.SdkHttpMethod;
 import software.amazon.awssdk.http.SdkHttpRequest;
+import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
 import software.amazon.awssdk.http.auth.spi.signer.AsyncSignRequest;
 import software.amazon.awssdk.http.auth.spi.signer.AsyncSignedRequest;
 import software.amazon.awssdk.http.auth.spi.signer.HttpSigner;
@@ -59,7 +52,10 @@ import software.amazon.awssdk.utils.http.SdkHttpUtils;
  * This implementation uses AWS SDK v2's HttpSigner interface for modern
  * authentication patterns.
  */
-public final class X509Signer implements HttpSigner<X509Identity> {
+@SdkInternalApi
+@Immutable
+@ThreadSafe
+final class X509Signer implements HttpSigner<X509Identity> {
     /** Signing algorithm identifier for RSA keys using SHA-256. */
     public static final String AWS4_X509_SHA256_RSA = "AWS4-X509-RSA-SHA256";
 
@@ -74,9 +70,6 @@ public final class X509Signer implements HttpSigner<X509Identity> {
 
     /** Header name for the X.509 certificate chain. */
     public static final String X_AMZ_X509_CHAIN = "X-Amz-X509-Chain";
-
-    /** Header name for the signing timestamp. */
-    public static final String X_AMZ_DATE = "X-Amz-Date";
 
     /** Header name for the content SHA-256 hash. */
     public static final String X_AMZ_CONTENT_SHA256 = "X-Amz-Content-Sha256";
@@ -126,29 +119,9 @@ public final class X509Signer implements HttpSigner<X509Identity> {
 
     private static final Logger LOG = Logger.loggerFor(X509Signer.class);
 
-    private static final AtomicInteger THREAD_COUNTER = new AtomicInteger(0);
-
-    private static final ThreadFactory DAEMON_THREAD_FACTORY = r -> {
-        Thread t = new Thread(r, "x509-signer-" + THREAD_COUNTER.getAndIncrement());
-        t.setDaemon(true);
-        return t;
-    };
-
-    /** Shared executor for async signing — static so no Closeable needed */
-    private static final ExecutorService DEFAULT_EXECUTOR = new ThreadPoolExecutor(
-            0,
-            Runtime.getRuntime().availableProcessors() * 2,
-            60L,
-            TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(100),
-            DAEMON_THREAD_FACTORY);
-
-    private final ExecutorService executor;
-
     private X509Signer(Builder builder) {
         this.serviceName = builder.serviceName;
         this.region = builder.region;
-        this.executor = builder.executor != null ? builder.executor : DEFAULT_EXECUTOR;
     }
 
     /**
@@ -178,7 +151,7 @@ public final class X509Signer implements HttpSigner<X509Identity> {
 
             // Add timestamp
             String timestamp = DATE_FORMAT.format(signingTime);
-            requestBuilder.putHeader(X_AMZ_DATE, timestamp);
+            requestBuilder.putHeader(SignerConstant.X_AMZ_DATE, timestamp);
 
             // Add User-Agent header
             requestBuilder.putHeader(USER_AGENT, USER_AGENT_VALUE);
@@ -234,7 +207,7 @@ public final class X509Signer implements HttpSigner<X509Identity> {
             String stringToSign = createStringToSign(canonicalRequest, signingTime, signingAlgorithm);
 
             // Compute signature
-            byte[] signature = computeX509Signature(stringToSign, privateKey, signingAlgorithm);
+            byte[] signature = computeX509Signature(stringToSign, privateKey);
 
             // Build authorization header
             String authHeader = buildAuthorizationHeader(
@@ -251,29 +224,42 @@ public final class X509Signer implements HttpSigner<X509Identity> {
         }
     }
 
+    /**
+     * Asynchronously sign a request. The empty-payload path returns an
+     * already-completed future; the with-payload path accumulates the publisher
+     * non-blocking and signs on completion.
+     *
+     * @apiNote SigV4 content-hashing requires the entire payload, so this
+     *          method buffers the publisher's bytes in memory before signing —
+     *          memory footprint is O(payload size) per in-flight signature.
+     *          The signing lambda runs on whichever thread completes the
+     *          payload future, typically the HTTP I/O thread; that's fine for
+     *          this signer's microsecond crypto but inappropriate for callers
+     *          holding strict event-loop boundaries (use {@code thenApplyAsync}
+     *          on the returned future to hop off). <strong>Credentials
+     *          providers should call sync {@link #sign} instead</strong> — the
+     *          credentials path is sync end-to-end and gains nothing from the
+     *          async SPI.
+     */
     @Override
     public CompletableFuture<AsyncSignedRequest> signAsync(AsyncSignRequest<? extends X509Identity> asyncSignRequest) {
-        return CompletableFuture.supplyAsync(
-                () -> {
-                    SignRequest.Builder<? extends X509Identity> signRequest =
-                            SignRequest.builder(asyncSignRequest.identity()).request(asyncSignRequest.request());
-                    byte[] collectedBytes = null;
-                    if (asyncSignRequest.payload().isPresent()) {
-                        collectedBytes = PublisherBytes.collect(
-                                asyncSignRequest.payload().get());
-                        final byte[] payloadForSign = collectedBytes;
-                        signRequest.payload(() -> new ByteArrayInputStream(payloadForSign));
-                    }
-                    SignedRequest syncResult = sign(signRequest.build());
-                    AsyncSignedRequest.Builder asyncResultBuilder =
-                            AsyncSignedRequest.builder().request(syncResult.request());
-                    if (collectedBytes != null) {
-                        final byte[] payloadBytes = collectedBytes;
-                        asyncResultBuilder.payload(PublisherBytes.toPublisher(payloadBytes));
-                    }
-                    return asyncResultBuilder.build();
-                },
-                executor);
+        if (asyncSignRequest.payload().isEmpty()) {
+            SignedRequest signed = sign(SignRequest.builder(asyncSignRequest.identity())
+                    .request(asyncSignRequest.request())
+                    .build());
+            return CompletableFuture.completedFuture(
+                    AsyncSignedRequest.builder().request(signed.request()).build());
+        }
+        return PublisherBytes.collectAsync(asyncSignRequest.payload().get()).thenApply(payloadBytes -> {
+            SignedRequest signed = sign(SignRequest.builder(asyncSignRequest.identity())
+                    .request(asyncSignRequest.request())
+                    .payload(() -> new ByteArrayInputStream(payloadBytes))
+                    .build());
+            return AsyncSignedRequest.builder()
+                    .request(signed.request())
+                    .payload(PublisherBytes.toPublisher(payloadBytes))
+                    .build();
+        });
     }
 
     /**
@@ -338,14 +324,8 @@ public final class X509Signer implements HttpSigner<X509Identity> {
                 SignRequest.builder(identity).request(request);
 
         // Extract payload from SdkHttpFullRequest if present
-        // populate it in SignRequest
         if (request.contentStreamProvider().isPresent()) {
-            try {
-                // Pass the content stream provider directly to SignRequest
-                signRequestBuilder.payload(request.contentStreamProvider().get());
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to extract payload from SdkHttpFullRequest", e);
-            }
+            signRequestBuilder.payload(request.contentStreamProvider().get());
         }
 
         return sign(signRequestBuilder.build());
@@ -367,37 +347,12 @@ public final class X509Signer implements HttpSigner<X509Identity> {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
 
-            // Use query parameters as payload if content missing and is POST request
-            if (useQueryParametersForPayload(signRequest)) {
-                // Generate the same way that v1 does: without using our existing canonical
-                // query string function
-                final Map<String, List<String>> requestParams =
-                        signRequest.request().rawQueryParameters();
-
-                if (requestParams.isEmpty()) {
-                    return BinaryUtils.toHex(digest.digest(new byte[0]));
-                }
-
-                final List<NameValuePair> nameValuePairs = new ArrayList<>();
-
-                for (Map.Entry<String, List<String>> entry : requestParams.entrySet()) {
-                    String parameterName = entry.getKey();
-                    for (String value : entry.getValue()) {
-                        nameValuePairs.add(new BasicNameValuePair(parameterName, value));
-                    }
-                }
-                final String encodedParameters = URLEncodedUtils.format(nameValuePairs, StandardCharsets.UTF_8);
-                return BinaryUtils.toHex(digest.digest(encodedParameters.getBytes(StandardCharsets.UTF_8)));
-            }
-
-            // Use payload directly from SignRequest if available
             if (signRequest.payload().isPresent()) {
                 try (java.io.InputStream inputStream =
                         signRequest.payload().get().newStream()) {
                     byte[] content = inputStream.readAllBytes();
                     return BinaryUtils.toHex(digest.digest(content));
                 } catch (Exception e) {
-                    // Don't want to throw when possible to succeed if payload is ""
                     LOG.error(() -> "Exception while parsing request payload contents", e);
                 }
             }
@@ -421,13 +376,7 @@ public final class X509Signer implements HttpSigner<X509Identity> {
         }
         canonical.append(path).append('\n');
 
-        // Canonical query string
-        String canonicalQueryString = ""; // Included if hash is of payload
-        if (!useQueryParametersForPayload(signRequest)) {
-            canonicalQueryString = getCanonicalQueryString(signRequest);
-        }
-
-        canonical.append(canonicalQueryString).append('\n');
+        canonical.append(getCanonicalQueryString(signRequest)).append('\n');
 
         // Canonical headers
         canonical.append(getCanonicalHeaders(signRequest)).append('\n');
@@ -439,20 +388,6 @@ public final class X509Signer implements HttpSigner<X509Identity> {
         canonical.append(contentHash);
 
         return canonical.toString();
-    }
-
-    /**
-     * Re-implementation of AWS Signature v4 method used for generating hash/query
-     * params.
-     *
-     * @param signRequest The sign request we need to evaluate
-     * @return whether to use query parameters as payload
-     */
-    private boolean useQueryParametersForPayload(SignRequest<? extends X509Identity> signRequest) {
-        SdkHttpRequest request = signRequest.request();
-        boolean isPost = SdkHttpMethod.POST.equals(request.method());
-        boolean isEmpty = signRequest.payload().isEmpty();
-        return isPost && isEmpty;
     }
 
     /**
@@ -516,24 +451,25 @@ public final class X509Signer implements HttpSigner<X509Identity> {
         }
     }
 
-    private byte[] computeX509Signature(String stringToSign, PrivateKey signingKey, String algorithm) {
+    private byte[] computeX509Signature(String stringToSign, PrivateKey signingKey) {
         String jcaAlgorithm;
-        if (AWS4_X509_SHA256_RSA.equals(algorithm)) {
+        // JCA crypto always uses SHA-256 paired with the key's native type, regardless
+        // of any algorithm advertised in the Authorization header. ML-DSA is the
+        // exception: it has its own JCA name and does not pair with a SHA-* prefix.
+        if (signingKey instanceof RSAPrivateKey) {
             jcaAlgorithm = JCA_SHA256_RSA;
-        } else if (AWS4_X509_SHA256_ECDSA.equals(algorithm)) {
+        } else if (signingKey instanceof ECPrivateKey) {
             jcaAlgorithm = JCA_SHA256_ECDSA;
-        } else if (AWS4_X509_MLDSA.equals(algorithm)) {
+        } else if (signingKey.getAlgorithm().contains(JCA_MLDSA)) {
             jcaAlgorithm = JCA_MLDSA;
         } else {
-            throw new IllegalArgumentException("Unsupported signing algorithm: " + algorithm
-                    + ". Only " + AWS4_X509_SHA256_RSA + ", " + AWS4_X509_SHA256_ECDSA + " or "
-                    + AWS4_X509_MLDSA + " are supported.");
+            throw new IllegalArgumentException("Unsupported signing key type: " + signingKey.getAlgorithm());
         }
 
         try {
             Signature signer = Signature.getInstance(jcaAlgorithm);
             signer.initSign(signingKey);
-            signer.update(stringToSign.getBytes(StandardCharsets.US_ASCII));
+            signer.update(stringToSign.getBytes(StandardCharsets.UTF_8));
             return signer.sign();
         } catch (NoSuchAlgorithmException exc) {
             throw new RuntimeException(
@@ -566,10 +502,11 @@ public final class X509Signer implements HttpSigner<X509Identity> {
     /**
      * Builder class for constructing X509Signer instances.
      */
-    public static class Builder {
+    @SdkInternalApi
+    @NotThreadSafe
+    static final class Builder {
         private String serviceName;
         private Region region;
-        private ExecutorService executor;
 
         /**
          * Sets the AWS service name for signing.
@@ -590,17 +527,6 @@ public final class X509Signer implements HttpSigner<X509Identity> {
          */
         public Builder region(Region region) {
             this.region = region;
-            return this;
-        }
-
-        /**
-         * Override the default executor used by signAsync.
-         *
-         * @param executor the executor service to use
-         * @return this builder instance for method chaining
-         */
-        public Builder executor(ExecutorService executor) {
-            this.executor = executor;
             return this;
         }
 

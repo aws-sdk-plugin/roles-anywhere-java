@@ -1,13 +1,15 @@
-package software.amazon.rolesanywhere.plugin.parse;
+package software.amazon.rolesanywhere.plugin;
 
 import java.io.IOException;
 import java.math.BigInteger;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 
 /**
  * Minimal DER/ASN.1 parser for PBES2 encrypted PKCS#8 structures.
  * Supports SEQUENCE, OCTET STRING, INTEGER, and OID — the types
  * needed to parse PBES2-params (RFC 8018 §A.4).
  */
+@SdkInternalApi
 final class DerParser {
 
     private static final int CONSTRUCTED = 0x20;

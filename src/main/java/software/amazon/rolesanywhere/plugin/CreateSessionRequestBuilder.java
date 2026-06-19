@@ -3,6 +3,7 @@ package software.amazon.rolesanywhere.plugin;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.endpoints.Endpoint;
@@ -18,6 +19,7 @@ import software.amazon.awssdk.utils.StringUtils;
  * Utility class for building CreateSession API requests for IAM Roles Anywhere. This class
  * constructs properly formatted HTTP requests for the /sessions endpoint.
  */
+@SdkInternalApi
 final class CreateSessionRequestBuilder {
     private static final String CONTENT_TYPE_JSON = "application/json";
 

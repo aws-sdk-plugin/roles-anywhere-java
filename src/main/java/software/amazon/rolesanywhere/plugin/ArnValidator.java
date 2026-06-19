@@ -1,12 +1,14 @@
 package software.amazon.rolesanywhere.plugin;
 
 import java.util.Map;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.arns.Arn;
 
 /**
  * Utility class for validating ARNs used in IAM Roles Anywhere operations.
  * This class provides validation for trust anchor, profile, and role ARNs.
  */
+@SdkInternalApi
 final class ArnValidator {
 
     // ARN validation constants

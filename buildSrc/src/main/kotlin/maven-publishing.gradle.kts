@@ -28,10 +28,10 @@ publishing {
             // but can be overridden here if needed
 
             pom {
-                name = "AWS SDK Plugin for IAM Roles Anywhere"
+                name = "IAM Roles Anywhere Plugin for AWS SDK for Java"
                 description = "AWS SDK for Java v2 plugin for IAM Roles Anywhere. Signs " +
                         "requests with an X.509 certificate to obtain temporary AWS credentials."
-                url = "https://github.com/aws-sdk-plugins/roles-anywhere-java"
+                url = "https://github.com/aws-sdk-plugin/roles-anywhere-java"
                 inceptionYear = "2025"
 
                 licenses {
@@ -51,14 +51,14 @@ publishing {
                 }
 
                 scm {
-                    connection = "scm:git:git://github.com/aws-sdk-plugins/roles-anywhere-java.git"
-                    developerConnection = "scm:git:ssh://github.com:aws-sdk-plugins/roles-anywhere-java.git"
-                    url = "https://github.com/aws-sdk-plugins/roles-anywhere-java"
+                    connection = "scm:git:git://github.com/aws-sdk-plugin/roles-anywhere-java.git"
+                    developerConnection = "scm:git:ssh://github.com:aws-sdk-plugin/roles-anywhere-java.git"
+                    url = "https://github.com/aws-sdk-plugin/roles-anywhere-java"
                 }
 
                 issueManagement {
                     system = "GitHub Issues"
-                    url = "https://github.com/aws-sdk-plugins/roles-anywhere-java/issues"
+                    url = "https://github.com/aws-sdk-plugin/roles-anywhere-java/issues"
                 }
             }
         }

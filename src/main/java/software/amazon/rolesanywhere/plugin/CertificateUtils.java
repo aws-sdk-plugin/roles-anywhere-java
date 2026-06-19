@@ -18,14 +18,15 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
 import java.util.Set;
 import java.util.regex.Pattern;
+import software.amazon.awssdk.annotations.SdkPublicApi;
 import software.amazon.awssdk.utils.Logger;
-import software.amazon.rolesanywhere.plugin.parse.Pbes2Decoder;
 
 /**
  * Utility class for working with X.509 certificates and private keys.
  * Provides methods for loading, parsing, and converting certificates and keys
  * between different formats (PEM, DER, Base64).
  */
+@SdkPublicApi
 public final class CertificateUtils {
 
     private static final Pattern PEM_PATTERN = Pattern.compile("-----(BEGIN|END)[A-Z0-9 ]+-----");

@@ -1,4 +1,4 @@
-package software.amazon.rolesanywhere.plugin.parse;
+package software.amazon.rolesanywhere.plugin;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
@@ -11,6 +11,7 @@ import javax.crypto.Cipher;
 import javax.crypto.EncryptedPrivateKeyInfo;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
+import software.amazon.awssdk.annotations.SdkInternalApi;
 
 /**
  * Decrypts PBES2-encrypted PKCS#8 private keys (RFC 8018).
@@ -26,7 +27,8 @@ import javax.crypto.spec.PBEKeySpec;
  *       provider such as BouncyCastle.</li>
  * </ul>
  */
-public final class Pbes2Decoder {
+@SdkInternalApi
+final class Pbes2Decoder {
 
     private static final String OID_PBES2 = "1.2.840.113549.1.5.13";
     private static final String OID_PBKDF2 = "1.2.840.113549.1.5.12";

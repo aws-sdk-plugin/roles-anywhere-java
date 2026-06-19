@@ -9,25 +9,36 @@ repositories {
 }
 
 dependencies {
-    implementation(platform("software.amazon.awssdk:bom:2.42.32"))
-    implementation("software.amazon.awssdk:rolesanywhere:2.42.32")
-    implementation("software.amazon.awssdk:apache-client:2.42.32")
-    implementation("software.amazon.awssdk:auth:2.42.32")
-    implementation("software.amazon.awssdk:http-auth-spi:2.42.32")
-    implementation("software.amazon.awssdk:arns:2.42.32")
-    implementation("software.amazon.awssdk:json-utils:2.42.32")
+    api(platform(libs.awssdk.bom))
+    // Types that leak through this plugin's public surface — customers compile
+    // against them when calling the Builder (Arn overloads) or consuming
+    // resolveCredentials() (AwsCredentials).
+    api(libs.awssdk.auth)
+    api(libs.awssdk.arns)
 
-    implementation("org.apache.httpcomponents:httpclient:4.5.14")
+    implementation(libs.awssdk.annotations)
+    implementation(libs.awssdk.rolesanywhere)
+    implementation(libs.awssdk.apache.client)
+    implementation(libs.awssdk.http.auth.spi)
+    implementation(libs.awssdk.json.utils)
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.13.0")
-    testImplementation("org.mockito:mockito-core:5.22.0")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.13.0")
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.mockito.core)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(17)
     }
+}
+
+// Pin the published bytecode floor to Java 17 to match what README documents
+// and what CI builds with. Without an explicit `release` setting javac would
+// target whatever the toolchain JDK is, silently bumping the floor on a
+// toolchain change.
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 tasks.named<Test>("test") {

@@ -8,6 +8,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Objects;
 import javax.annotation.Nonnull;
+import software.amazon.awssdk.annotations.Immutable;
+import software.amazon.awssdk.annotations.SdkPublicApi;
+import software.amazon.awssdk.annotations.ThreadSafe;
 import software.amazon.awssdk.identity.spi.Identity;
 
 /**
@@ -15,6 +18,9 @@ import software.amazon.awssdk.identity.spi.Identity;
  * This class encapsulates an X.509 certificate, its corresponding private key,
  * and an optional certificate chain for trust validation.
  */
+@SdkPublicApi
+@Immutable
+@ThreadSafe
 @SuppressFBWarnings(
         value = "EI_EXPOSE_REP",
         justification = "X509Certificate is an abstract type with no copy constructor; callers are expected"
