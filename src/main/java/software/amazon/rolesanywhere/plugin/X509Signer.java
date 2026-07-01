@@ -94,34 +94,84 @@ final class X509Signer implements HttpSigner<X509Identity> {
     private static final DateTimeFormatter DATE_STAMP_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd", Locale.ROOT).withZone(ZoneOffset.UTC);
 
-    /** User-Agent string, initialized at class load time. */
-    private static final String USER_AGENT_VALUE;
+    /**
+     * Environment segment (java version, OS, arch) shared across all User-Agent
+     * strings this JVM emits. The variant token differs per signer instance.
+     */
+    private static final String USER_AGENT_ENV;
 
     static {
-        // Generate User Agent
-        String version = X509Signer.class.getPackage().getImplementationVersion();
-        if (version == null) {
-            version = "unknown";
-        }
-
         String ver = System.getProperty("java.version");
         String javaVersion = "java" + ver.substring(0, ver.indexOf('.') < 0 ? ver.length() : ver.indexOf('.'));
         String osName = System.getProperty("os.name").toLowerCase(Locale.ROOT).replace(" ", "");
         String osVersion = System.getProperty("os.version");
         String arch = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
+        USER_AGENT_ENV = String.format("(%s; %s/%s; %s)", javaVersion, osName, osVersion, arch);
+    }
 
-        USER_AGENT_VALUE =
-                String.format("CredProvider/%s (%s; %s/%s; %s)", version, javaVersion, osName, osVersion, arch);
+    /**
+     * Which caller-facing surface constructed the credentials provider that
+     * owns this signer. Emitted in the User-Agent so the service can attribute
+     * traffic to the plugin wrapper vs. the raw credentials provider.
+     */
+    enum Source {
+        PLUGIN("plugin"),
+        PROVIDER("provider");
+
+        private final String token;
+
+        Source(String token) {
+            this.token = token;
+        }
+
+        String token() {
+            return token;
+        }
     }
 
     private final String serviceName;
     private final Region region;
+    private final String userAgent;
 
     private static final Logger LOG = Logger.loggerFor(X509Signer.class);
 
     private X509Signer(Builder builder) {
         this.serviceName = builder.serviceName;
         this.region = builder.region;
+        this.userAgent = buildUserAgent(builder.source);
+    }
+
+    private static String buildUserAgent(Source source) {
+        return String.format("RolesAnywhereJava/%s/%s %s", source.token(), resolveVersion(), USER_AGENT_ENV);
+    }
+
+    /**
+     * Resolves the package's version for the User-Agent. Prefers a build-time
+     * generated resource file (populated from {@code project.version}), which
+     * works both in unit tests and in the published jar. Falls back to the
+     * jar manifest ({@code getImplementationVersion()}) if the resource is
+     * absent, and finally to the literal string {@code "unknown"} — the
+     * User-Agent is best-effort telemetry, not a runtime contract.
+     */
+    static String resolveVersion() {
+        try (java.io.InputStream in =
+                X509Signer.class.getResourceAsStream("/META-INF/rolesanywhere-plugin-version.properties")) {
+            if (in != null) {
+                java.util.Properties props = new java.util.Properties();
+                props.load(in);
+                String version = props.getProperty("version");
+                if (version != null && !version.isBlank()) {
+                    return version.trim();
+                }
+            }
+        } catch (java.io.IOException ignored) {
+            // Fall through — resource unreadable, try manifest.
+        }
+        String manifestVersion = X509Signer.class.getPackage().getImplementationVersion();
+        if (manifestVersion != null && !manifestVersion.isBlank()) {
+            return manifestVersion;
+        }
+        return "unknown";
     }
 
     /**
@@ -154,7 +204,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
             requestBuilder.putHeader(SignerConstant.X_AMZ_DATE, timestamp);
 
             // Add User-Agent header
-            requestBuilder.putHeader(USER_AGENT, USER_AGENT_VALUE);
+            requestBuilder.putHeader(USER_AGENT, userAgent);
 
             // Add host header if not present
             if (!request.headers().containsKey("Host")) {
@@ -507,6 +557,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
     static final class Builder {
         private String serviceName;
         private Region region;
+        private Source source = Source.PROVIDER;
 
         /**
          * Sets the AWS service name for signing.
@@ -531,6 +582,20 @@ final class X509Signer implements HttpSigner<X509Identity> {
         }
 
         /**
+         * Sets the caller-facing surface that constructed the owning credentials
+         * provider. Emitted in the User-Agent so the service can attribute
+         * traffic between {@code RolesAnywherePlugin} and
+         * {@code RolesAnywhereCredentialsProvider}.
+         *
+         * @param source the entry-point tag; defaults to {@link Source#PROVIDER}
+         * @return this builder instance for method chaining
+         */
+        public Builder source(Source source) {
+            this.source = source;
+            return this;
+        }
+
+        /**
          * Builds the X509Signer instance with the configured parameters.
          *
          * @return a new X509Signer instance
@@ -539,6 +604,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
         public X509Signer build() {
             ValidationUtils.requireParameter(serviceName, "serviceName");
             ValidationUtils.requireParameter(region, "region");
+            ValidationUtils.requireParameter(source, "source");
             return new X509Signer(this);
         }
     }

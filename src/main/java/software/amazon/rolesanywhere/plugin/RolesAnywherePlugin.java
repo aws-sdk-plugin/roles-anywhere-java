@@ -53,7 +53,7 @@ public final class RolesAnywherePlugin implements SdkPlugin {
     @NotThreadSafe
     public static final class Builder {
         private final RolesAnywhereCredentialsProvider.Builder providerBuilder =
-                RolesAnywhereCredentialsProvider.builder();
+                RolesAnywhereCredentialsProvider.builder().source(X509Signer.Source.PLUGIN);
 
         private Builder() {}
 

@@ -83,66 +83,99 @@ class X509SignerTest {
     }
 
     @Test
-    void testUserAgentHeaderIsPresent() throws Exception {
-        // Generate test key pair
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
-        keyGen.initialize(2048);
-        KeyPair keyPair = keyGen.generateKeyPair();
+    void testResolveVersionMatchesGradleProjectVersion() throws Exception {
+        // Gradle writes the resolved project.version into
+        // META-INF/rolesanywhere-plugin-version.properties (see build.gradle.kts).
+        // X509Signer.resolveVersion() reads that file at runtime so the User-Agent
+        // reports a real version, not the "unknown" fallback.
+        String resolved = X509Signer.resolveVersion();
 
-        // Create mock certificate
-        X509Certificate certificate = mock(X509Certificate.class);
-        when(certificate.getSubjectX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
-        when(certificate.getIssuerX500Principal()).thenReturn(new javax.security.auth.x500.X500Principal("CN=test"));
-        when(certificate.getNotBefore()).thenReturn(Date.from(Instant.now()));
-        long certNotAfter = 365L * 24 * 60 * 60 * 1000;
-        when(certificate.getNotAfter()).thenReturn(Date.from(Instant.now().plusMillis(certNotAfter)));
-        when(certificate.getSerialNumber()).thenReturn(BigInteger.ONE);
-        when(certificate.getVersion()).thenReturn(3);
-        when(certificate.getSigAlgName()).thenReturn("SHA256withRSA");
-        when(certificate.getPublicKey()).thenReturn(keyPair.getPublic());
-        when(certificate.getEncoded())
-                .thenReturn(("-----BEGIN CERTIFICATE-----"
-                                + "\nMIID7DCCAtSgAwIBAgIUHqA5luH++q9Y62QO5xUx7LiBIIkwDQYJKoZIhvcNAQEL"
-                                + "\n-----END CERTIFICATE-----")
-                        .getBytes(StandardCharsets.UTF_8));
+        assertNotNull(resolved, "resolveVersion() must never return null");
+        assertEquals(
+                "unknown".equals(resolved),
+                false,
+                "Version resource missing — build.gradle.kts should generate META-INF/rolesanywhere-plugin-version.properties");
 
-        // Create signer
-        X509Signer signer = X509Signer.builder()
-                .serviceName("rolesanywhere")
-                .region(Region.US_EAST_1)
-                .build();
+        // Cross-check against the same resource, loaded independently, to prove
+        // resolveVersion() actually parses the file rather than pulling from
+        // some other source (e.g. jar manifest, hardcoded string).
+        try (java.io.InputStream in =
+                X509SignerTest.class.getResourceAsStream("/META-INF/rolesanywhere-plugin-version.properties")) {
+            assertNotNull(in, "Version resource must be present on the test classpath");
+            java.util.Properties props = new java.util.Properties();
+            props.load(in);
+            assertEquals(props.getProperty("version"), resolved);
+        }
 
-        // Create test request
+        // Semantic-version-ish shape: at minimum, contains a digit and no whitespace.
+        assertTrue(resolved.matches("\\S+"), "Version must not contain whitespace, got: " + resolved);
+        assertTrue(resolved.matches(".*\\d.*"), "Version must contain at least one digit, got: " + resolved);
+    }
+
+    @Test
+    void testUserAgentEmbedsResolvedVersion() throws Exception {
+        String resolved = X509Signer.resolveVersion();
+        String userAgent = signAndReadUserAgent(null);
+
+        // Extract <ver> from RolesAnywhereJava/provider/<ver> ( ...
+        Pattern extractor = Pattern.compile("^RolesAnywhereJava/provider/([^ ]+) \\(.*\\)$");
+        java.util.regex.Matcher m = extractor.matcher(userAgent);
+        assertTrue(m.matches(), "User-Agent should match extractor pattern. Got: " + userAgent);
+        assertEquals(resolved, m.group(1), "User-Agent version segment must equal resolveVersion()");
+    }
+
+    @Test
+    void testUserAgentHeaderProviderVariant() throws Exception {
+        String userAgent = signAndReadUserAgent(null);
+
+        // Format: RolesAnywhereJava/<variant>/<version> (<javaVersion>; <os>/<osVersion>; <arch>)
+        Pattern userAgentPattern =
+                Pattern.compile("^RolesAnywhereJava/provider/[^ ]+ \\([^;]+; [^;]+/[^;]+; [^)]+\\)$");
+        assertTrue(
+                userAgentPattern.matcher(userAgent).matches(),
+                "User-Agent should match RolesAnywhereJava/provider/<ver> (env). Got: " + userAgent);
+        assertTrue(
+                userAgent.startsWith("RolesAnywhereJava/provider/"),
+                "User-Agent should start with 'RolesAnywhereJava/provider/'. Got: " + userAgent);
+    }
+
+    @Test
+    void testUserAgentHeaderPluginVariant() throws Exception {
+        String userAgent = signAndReadUserAgent(X509Signer.Source.PLUGIN);
+
+        Pattern userAgentPattern = Pattern.compile("^RolesAnywhereJava/plugin/[^ ]+ \\([^;]+; [^;]+/[^;]+; [^)]+\\)$");
+        assertTrue(
+                userAgentPattern.matcher(userAgent).matches(),
+                "User-Agent should match RolesAnywhereJava/plugin/<ver> (env). Got: " + userAgent);
+        assertTrue(
+                userAgent.startsWith("RolesAnywhereJava/plugin/"),
+                "User-Agent should start with 'RolesAnywhereJava/plugin/'. Got: " + userAgent);
+    }
+
+    private static String signAndReadUserAgent(X509Signer.Source source) throws Exception {
+        KeyPair keyPair = generateRsaKeyPair();
+        X509Certificate certificate = mockCertificate(keyPair);
+
+        X509Signer.Builder signerBuilder =
+                X509Signer.builder().serviceName("rolesanywhere").region(Region.US_EAST_1);
+        if (source != null) {
+            signerBuilder.source(source);
+        }
+        X509Signer signer = signerBuilder.build();
+
         SdkHttpFullRequest request = SdkHttpFullRequest.builder()
                 .uri(URI.create("https://rolesanywhere.us-east-1.amazonaws.com/sessions"))
                 .method(SdkHttpMethod.POST)
                 .build();
 
-        // Sign the request
         SignedRequest signedRequest = signer.sign(request, keyPair.getPrivate(), certificate);
 
-        // Verify User-Agent header is present
         List<String> userAgentHeaders = signedRequest.request().headers().get(X509Signer.USER_AGENT);
         assertNotNull(userAgentHeaders, "User-Agent header should be present");
         assertEquals(1, userAgentHeaders.size(), "Should have exactly one User-Agent header");
-
         String userAgent = userAgentHeaders.get(0);
         assertNotNull(userAgent, "User-Agent value should not be null");
-
-        // Verify format: CredProvider/<version> (<javaVersion>; <os>/<osVersion>;
-        // <arch>)
-        // Pattern allows for flexible version, java version, os, osVersion, and arch
-        // values
-        Pattern userAgentPattern = Pattern.compile("^CredProvider/[^ ]+ \\([^;]+; [^;]+/[^;]+; [^)]+\\)$");
-        String expectedFormat = "CredProvider/<version> (<javaVersion>; <os>/<osVersion>; <arch>)";
-        assertTrue(
-                userAgentPattern.matcher(userAgent).matches(),
-                "User-Agent should match format '" + expectedFormat + "'. Got: " + userAgent);
-
-        // Verify it starts with CredProvider/
-        assertTrue(
-                userAgent.startsWith("CredProvider/"),
-                "User-Agent should start with 'CredProvider/'. Got: " + userAgent);
+        return userAgent;
     }
 
     @Test

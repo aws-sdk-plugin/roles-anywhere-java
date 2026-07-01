@@ -94,6 +94,10 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
     private final SdkHttpClient httpClient;
     private final boolean ownedHttpClient;
 
+    // Caller-facing surface tag emitted in the User-Agent — set to PLUGIN by
+    // RolesAnywherePlugin.Builder, PROVIDER for direct provider usage.
+    private final X509Signer.Source source;
+
     // Credential cache and refresh settings
     private final Duration staleTime;
     private final Duration minRefreshInterval;
@@ -129,6 +133,7 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
         this.staleTime = builder.staleTime;
         this.minRefreshInterval = builder.minRefreshInterval;
+        this.source = builder.source;
         // StaleValueBehavior.ALLOW is the static-stability mode: when refresh fails
         // past staleTime, the previously-cached value is still served (with jittered
         // backoff). The default STRICT would throw, which is the opposite of what
@@ -215,6 +220,7 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         X509Signer signer = X509Signer.builder()
                 .region(this.region)
                 .serviceName("rolesanywhere")
+                .source(this.source)
                 .build();
         SdkHttpFullRequest request = this.createSessionRequestBuilder().build();
         SignedRequest sr;
@@ -322,7 +328,22 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         private Duration staleTime = Duration.ofMinutes(5);
         private Duration minRefreshInterval = DEFAULT_MIN_REFRESH_INTERVAL;
 
+        // User-Agent source tag — package-private setter used by
+        // RolesAnywherePlugin.Builder to distinguish plugin vs. direct usage.
+        private X509Signer.Source source = X509Signer.Source.PROVIDER;
+
         private Builder() {}
+
+        /**
+         * Overrides the User-Agent source tag. Package-private: only
+         * {@link RolesAnywherePlugin.Builder} calls this to mark plugin-driven
+         * traffic. Customers using this builder directly always emit
+         * {@code provider}.
+         */
+        Builder source(X509Signer.Source source) {
+            this.source = source;
+            return this;
+        }
 
         private Region resolveRegion() {
             if (region != null) {

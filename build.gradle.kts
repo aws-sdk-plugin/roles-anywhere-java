@@ -44,3 +44,23 @@ tasks.withType<JavaCompile>().configureEach {
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }
+
+// Emit the resolved project version into a resource file so X509Signer can
+// stamp it into the User-Agent at runtime. Read via the class loader, so the
+// same lookup works from unit tests (build/resources/main) and from the
+// published jar (META-INF/…).
+val generatePluginVersionResource by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated/resources/version/META-INF")
+    outputs.dir(outputDir)
+    val versionValue = project.version.toString()
+    inputs.property("version", versionValue)
+    doLast {
+        val dir = outputDir.get().asFile
+        dir.mkdirs()
+        dir.resolve("rolesanywhere-plugin-version.properties").writeText("version=$versionValue\n")
+    }
+}
+
+sourceSets["main"].resources.srcDir(
+    generatePluginVersionResource.map { layout.buildDirectory.dir("generated/resources/version") }
+)
