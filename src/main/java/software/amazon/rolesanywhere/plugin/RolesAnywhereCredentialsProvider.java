@@ -19,6 +19,7 @@ import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.utils.Logger;
 import software.amazon.awssdk.utils.SdkAutoCloseable;
+import software.amazon.awssdk.utils.ToString;
 import software.amazon.awssdk.utils.cache.CachedSupplier;
 import software.amazon.awssdk.utils.cache.NonBlocking;
 import software.amazon.awssdk.utils.cache.RefreshResult;
@@ -47,11 +48,7 @@ import software.amazon.awssdk.utils.cache.RefreshResult;
  *         .profileArn(PROFILE_ARN)
  *         .roleArn(ROLE_ARN)
  *         .trustAnchorArn(TRUST_ANCHOR_ARN)
- *         .identityProvider(() -> {
- *             X509Certificate cert = CertificateUtils.loadCertificate(certPath);
- *             PrivateKey key = CertificateUtils.loadPrivateKey(keyPath, "RSA");
- *             return new X509Identity(cert, key);
- *         })
+ *         .identityProvider(X509IdentityProvider.fromFiles(certPath, keyPath, "RSA"))
  *         .region(Region.US_EAST_1)
  *         .build();
  * // Create an AWS Client
@@ -89,8 +86,8 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
 
     // Endpoint configuration
     private final URI customEndpoint;
-    private final boolean fipsEnabled;
-    private final boolean dualStackEnabled;
+    private final Boolean fipsEnabled;
+    private final Boolean dualStackEnabled;
     private final SdkHttpClient httpClient;
     private final boolean ownedHttpClient;
 
@@ -154,17 +151,17 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         return new Builder();
     }
 
-    private X509Identity getIdentity() throws IdentityProviderException {
-        X509Identity resolved = identityProvider.create();
+    private X509Identity resolveX509Identity() {
+        X509Identity resolved = identityProvider.resolve();
         if (resolved == null) {
-            throw new IdentityProviderException("X509IdentityProvider returned null. "
+            throw SdkClientException.create("X509IdentityProvider returned null. "
                     + "Ensure your identityProvider returns a valid X509Identity.");
         }
         try {
             ValidationUtils.validateCertificate(resolved.certificate());
             ValidationUtils.validatePrivateKey(resolved.privateKey());
         } catch (Exception e) {
-            throw new IdentityProviderException("X509IdentityProvider returned an invalid identity", e);
+            throw SdkClientException.create("X509IdentityProvider returned invalid key material", e);
         }
         Instant expiryHorizon = Instant.now().plus(Duration.ofDays(30));
         warnIfExpiringSoon(resolved.certificate(), "leaf", expiryHorizon);
@@ -223,17 +220,15 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
                 .source(this.source)
                 .build();
         SdkHttpFullRequest request = this.createSessionRequestBuilder().build();
+        X509Identity keyMaterial = this.resolveX509Identity();
         SignedRequest sr;
         try {
-            sr = signer.sign(request, this.getIdentity());
-        } catch (IdentityProviderException e) {
-            // Wrap as SdkClientException for consistency with the rest of the
-            // package (CreateSessionRequestUtils, etc.) and to mark this as an
-            // operational failure rather than a programming bug.
-            throw SdkClientException.builder()
-                    .message("Failed to load X.509 identity for IAM Roles Anywhere")
-                    .cause(e)
-                    .build();
+            sr = signer.sign(request, keyMaterial);
+        } finally {
+            // Best-effort zero of JCE-internal private key state on providers
+            // that honor Destroyable. No-op when the customer owns the key
+            // (see X509Identity.create vs create).
+            keyMaterial.destroyIfOwned();
         }
         String responseBody = CreateSessionRequestUtils.executeHttpRequest(request, sr, this.httpClient);
         AwsCredentials credentials = CreateSessionRequestUtils.parseCreateSessionResponse(responseBody);
@@ -261,8 +256,8 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
                 .trustAnchorArn(trustAnchorArn)
                 .profileArn(profileArn)
                 .roleArn(roleArn)
-                .fipsEnabled(fipsEnabled)
-                .dualStackEnabled(dualStackEnabled);
+                .fipsEnabled(Boolean.TRUE.equals(fipsEnabled))
+                .dualStackEnabled(Boolean.TRUE.equals(dualStackEnabled));
 
         if (roleSessionName != null) {
             builder.roleSessionName(roleSessionName);
@@ -295,6 +290,23 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
      *
      * @return Configured SdkHttpClient
      */
+    @Override
+    public String toString() {
+        return ToString.builder("RolesAnywhereCredentialsProvider")
+                .add("region", region)
+                .add("profileArn", profileArn)
+                .add("roleArn", roleArn)
+                .add("trustAnchorArn", trustAnchorArn)
+                .add("roleSessionName", roleSessionName)
+                .add("durationSeconds", durationSeconds)
+                .add("customEndpoint", customEndpoint)
+                .add("fipsEnabled", fipsEnabled)
+                .add("dualStackEnabled", dualStackEnabled)
+                .add("staleTime", staleTime)
+                .add("minRefreshInterval", minRefreshInterval)
+                .build();
+    }
+
     private static SdkHttpClient createDefaultHttpClient() {
         return ApacheHttpClient.builder()
                 .connectionTimeout(DEFAULT_CONNECTION_TIMEOUT)
@@ -320,8 +332,8 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
 
         // Endpoint configuration
         private URI customEndpoint;
-        private boolean fipsEnabled = false;
-        private boolean dualStackEnabled = false;
+        private Boolean fipsEnabled;
+        private Boolean dualStackEnabled;
         private SdkHttpClient httpClient;
 
         // Credential cache and refresh settings
@@ -391,9 +403,10 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
 
         /**
-         * Sets the X509IdentityProvider containing the certificate and private key.
+         * Sets the {@link X509IdentityProvider} that supplies signing key
+         * material on every credential refresh.
          *
-         * @param identityProvider The X509IdentityProvider for authentication
+         * @param identityProvider provider of X.509 signing key material
          * @return This builder instance
          * @throws IllegalArgumentException if {@code identityProvider} is null
          */
@@ -600,10 +613,13 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          * <p>
          * This setting is ignored if a custom endpoint is provided.
          *
-         * @param fipsEnabled true to use FIPS endpoints, false otherwise
+         * @param fipsEnabled {@code true} to use FIPS endpoints, {@code false} to
+         *                    explicitly opt out, or {@code null} to leave
+         *                    unconfigured (endpoint resolution falls back to the
+         *                    region default, which is currently non-FIPS)
          * @return This builder instance
          */
-        public Builder fipsEnabled(boolean fipsEnabled) {
+        public Builder fipsEnabled(Boolean fipsEnabled) {
             this.fipsEnabled = fipsEnabled;
             return this;
         }
@@ -614,10 +630,13 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          * <p>
          * This setting is ignored if a custom endpoint is provided.
          *
-         * @param dualStackEnabled true to use dual-stack endpoints, false otherwise
+         * @param dualStackEnabled {@code true} to use dual-stack endpoints,
+         *                         {@code false} to explicitly opt out, or
+         *                         {@code null} to leave unconfigured (endpoint
+         *                         resolution falls back to the region default)
          * @return This builder instance
          */
-        public Builder dualStackEnabled(boolean dualStackEnabled) {
+        public Builder dualStackEnabled(Boolean dualStackEnabled) {
             this.dualStackEnabled = dualStackEnabled;
             return this;
         }
@@ -674,13 +693,14 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          * @param minRefreshInterval minimum duration between refresh attempts
          * @return This builder instance
          */
+        @SuppressWarnings("JavaDurationGetSecondsToToSeconds") // getSeconds() is Java 8; toSeconds() is Java 9+
         public Builder minRefreshInterval(Duration minRefreshInterval) {
             if (minRefreshInterval == null) {
                 throw new IllegalArgumentException("minRefreshInterval must not be null");
             }
             if (!minRefreshInterval.isZero() && minRefreshInterval.compareTo(MIN_REFRESH_INTERVAL_FLOOR) < 0) {
                 throw new IllegalArgumentException("minRefreshInterval cannot be less than "
-                        + MIN_REFRESH_INTERVAL_FLOOR.toSeconds() + " seconds"
+                        + MIN_REFRESH_INTERVAL_FLOOR.getSeconds() + " seconds"
                         + " (use Duration.ZERO to disable throttling)");
             }
             this.minRefreshInterval = minRefreshInterval;

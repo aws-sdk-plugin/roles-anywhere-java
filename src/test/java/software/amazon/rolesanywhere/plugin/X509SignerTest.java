@@ -182,7 +182,7 @@ class X509SignerTest {
     void testSignAsyncEmptyPayloadReturnsCompletedFutureWithoutBlocking() throws Exception {
         KeyPair keyPair = generateRsaKeyPair();
         X509Certificate certificate = mockCertificate(keyPair);
-        X509Identity identity = new X509Identity(certificate, keyPair.getPrivate());
+        X509Identity identity = X509Identity.create(certificate, keyPair.getPrivate());
 
         X509Signer signer = X509Signer.builder()
                 .serviceName("rolesanywhere")
@@ -215,7 +215,7 @@ class X509SignerTest {
     void testSignAsyncWithPayloadComposesOnPublisherWithoutBlocking() throws Exception {
         KeyPair keyPair = generateRsaKeyPair();
         X509Certificate certificate = mockCertificate(keyPair);
-        X509Identity identity = new X509Identity(certificate, keyPair.getPrivate());
+        X509Identity identity = X509Identity.create(certificate, keyPair.getPrivate());
 
         X509Signer signer = X509Signer.builder()
                 .serviceName("rolesanywhere")

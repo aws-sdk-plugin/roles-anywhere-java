@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.invocation.InvocationOnMock;
 import software.amazon.awssdk.arns.Arn;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.AbortableInputStream;
 import software.amazon.awssdk.http.ExecutableHttpRequest;
 import software.amazon.awssdk.http.HttpExecuteResponse;
@@ -100,7 +101,7 @@ public class RolesAnywhereCredentialsProviderTest {
                                 + "\n-----END CERTIFICATE-----")
                         .getBytes(StandardCharsets.UTF_8));
 
-        return new X509Identity(certificate, privateKey);
+        return X509Identity.create(certificate, privateKey);
     }
 
     private static String mockResponseBody(Instant expiration) {
@@ -534,7 +535,7 @@ public class RolesAnywhereCredentialsProviderTest {
         try {
             X509Certificate certificate = CertificateUtils.loadCertificate(certPath);
             PrivateKey privateKey = CertificateUtils.loadPrivateKey(keyPath, "RSA");
-            X509Identity identity = new X509Identity(certificate, privateKey);
+            X509Identity identity = X509Identity.create(certificate, privateKey);
 
             try (RolesAnywhereCredentialsProvider provider = RolesAnywhereCredentialsProvider.builder()
                     .identityProvider(() -> identity)
@@ -678,7 +679,7 @@ public class RolesAnywhereCredentialsProviderTest {
     public void testIdentityProviderIsCalledAtResolveTime() throws Exception {
         X509IdentityProvider provider = spy(new X509IdentityProvider() {
             @Override
-            public X509Identity create() {
+            public X509Identity resolve() {
                 try {
                     return createTestIdentity();
                 } catch (Exception e) {
@@ -702,7 +703,7 @@ public class RolesAnywhereCredentialsProviderTest {
             credentialsProvider.resolveCredentials();
 
             // identityProvider.create() is only called at resolveCredentials time, not at build time
-            verify(provider, times(1)).create();
+            verify(provider, times(1)).resolve();
         }
     }
 
@@ -715,7 +716,7 @@ public class RolesAnywhereCredentialsProviderTest {
             AtomicInteger identityCalls = new AtomicInteger(0);
             X509IdentityProvider failingIdentity = () -> {
                 identityCalls.incrementAndGet();
-                throw new IdentityProviderException("simulated identity failure");
+                throw SdkClientException.create("simulated identity failure");
             };
 
             SdkHttpClient mockHttpClient = mock(SdkHttpClient.class);

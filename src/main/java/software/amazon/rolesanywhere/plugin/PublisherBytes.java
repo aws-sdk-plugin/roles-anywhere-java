@@ -37,7 +37,7 @@ final class PublisherBytes {
         CompletableFuture<byte[]> future = new CompletableFuture<>();
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         AtomicReference<Subscription> subscriptionRef = new AtomicReference<>();
-        publisher.subscribe(new Subscriber<>() {
+        publisher.subscribe(new Subscriber<ByteBuffer>() {
 
             @Override
             public void onSubscribe(Subscription s) {

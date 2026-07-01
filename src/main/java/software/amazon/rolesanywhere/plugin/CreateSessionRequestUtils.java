@@ -100,7 +100,13 @@ final class CreateSessionRequestUtils {
     private static String readResponseBody(HttpExecuteResponse response) throws IOException {
         if (response.responseBody().isPresent()) {
             try (InputStream inputStream = response.responseBody().get()) {
-                return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[8192];
+                int n;
+                while ((n = inputStream.read(chunk)) != -1) {
+                    buf.write(chunk, 0, n);
+                }
+                return new String(buf.toByteArray(), StandardCharsets.UTF_8);
             }
         }
         return "";
@@ -120,12 +126,12 @@ final class CreateSessionRequestUtils {
                 SdkServiceException.builder().statusCode(statusCode);
 
         // Map of status codes to their default error messages
-        Map<Integer, String> statusCodeMessages = Map.of(
-                400, "Bad Request: Invalid request parameters",
-                401, "Unauthorized: Authentication failed",
-                403, "Forbidden: Access denied",
-                404, "Not Found: Resource not found",
-                429, "Too Many Requests: Rate limit exceeded");
+        Map<Integer, String> statusCodeMessages = new java.util.HashMap<>();
+        statusCodeMessages.put(400, "Bad Request: Invalid request parameters");
+        statusCodeMessages.put(401, "Unauthorized: Authentication failed");
+        statusCodeMessages.put(403, "Forbidden: Access denied");
+        statusCodeMessages.put(404, "Not Found: Resource not found");
+        statusCodeMessages.put(429, "Too Many Requests: Rate limit exceeded");
 
         String finalMessage;
         if (statusCodeMessages.containsKey(statusCode)) {
@@ -164,8 +170,7 @@ final class CreateSessionRequestUtils {
         try {
             JsonNode jsonNode = JsonNode.parser().parse(responseBody);
             JsonNode messageNode = jsonNode.field("Message")
-                    .or(() -> jsonNode.field("message"))
-                    .orElse(null);
+                    .orElseGet(() -> jsonNode.field("message").orElse(null));
 
             if (messageNode != null && messageNode.isString()) {
                 return messageNode.asString();

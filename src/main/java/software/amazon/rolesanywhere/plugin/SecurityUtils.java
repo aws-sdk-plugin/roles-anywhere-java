@@ -1,6 +1,5 @@
 package software.amazon.rolesanywhere.plugin;
 
-import java.lang.invoke.VarHandle;
 import java.util.Arrays;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 
@@ -31,6 +30,13 @@ import software.amazon.awssdk.annotations.SdkInternalApi;
 @SdkInternalApi
 final class SecurityUtils {
 
+    // Volatile write acts as a StoreLoad barrier on all JVMs, preventing the JIT
+    // from eliminating the preceding Arrays.fill as a dead store. Cheaper than
+    // synchronized and available on Java 8+ (unlike java.lang.invoke.VarHandle,
+    // which is Java 9+).
+    @SuppressWarnings("unused")
+    private static volatile int fence;
+
     private SecurityUtils() {
         // Utility class
     }
@@ -48,7 +54,7 @@ final class SecurityUtils {
     public static void clear(char[] sensitive) {
         if (sensitive != null) {
             Arrays.fill(sensitive, '\0');
-            VarHandle.fullFence();
+            fence = 0;
         }
     }
 
@@ -66,7 +72,7 @@ final class SecurityUtils {
     public static void clear(byte[] sensitive) {
         if (sensitive != null) {
             Arrays.fill(sensitive, (byte) 0);
-            VarHandle.fullFence();
+            fence = 0;
         }
     }
 }

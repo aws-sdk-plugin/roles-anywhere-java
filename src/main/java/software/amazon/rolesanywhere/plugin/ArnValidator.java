@@ -1,5 +1,7 @@
 package software.amazon.rolesanywhere.plugin;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.arns.Arn;
@@ -17,13 +19,17 @@ final class ArnValidator {
     private static final String TRUST_ANCHOR_RESOURCE_TYPE = "trust-anchor";
     private static final String PROFILE_RESOURCE_TYPE = "profile";
     private static final String ROLE_RESOURCE_TYPE = "role";
-    private static final Map<String, String> RESOURCE_TYPES = Map.of(
-            TRUST_ANCHOR_RESOURCE_TYPE,
-            "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>",
-            ROLE_RESOURCE_TYPE,
-            "arn:<partition>:iam::<account>:role/<role-name>",
-            PROFILE_RESOURCE_TYPE,
-            "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>");
+    private static final Map<String, String> RESOURCE_TYPES;
+
+    static {
+        Map<String, String> m = new HashMap<>();
+        m.put(
+                TRUST_ANCHOR_RESOURCE_TYPE,
+                "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>");
+        m.put(ROLE_RESOURCE_TYPE, "arn:<partition>:iam::<account>:role/<role-name>");
+        m.put(PROFILE_RESOURCE_TYPE, "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>");
+        RESOURCE_TYPES = Collections.unmodifiableMap(m);
+    }
 
     private ArnValidator() {
         // Utility class - prevent instantiation
@@ -93,7 +99,7 @@ final class ArnValidator {
             throw new IllegalArgumentException("Invalid " + resourceType + " ARN service, got: " + arn.service());
         }
 
-        if (arn.resource().resourceType().isEmpty()
+        if (!arn.resource().resourceType().isPresent()
                 || !resourceType.equals(arn.resource().resourceType().get())) {
             throw new IllegalArgumentException(
                     "Invalid " + resourceType + " ARN resource type. Expected: " + resourceType);

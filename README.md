@@ -26,20 +26,18 @@ AWS IAM Roles Anywhere allows your workloads running outside of AWS (on-premises
 
 ```java
 import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
-import software.amazon.rolesanywhere.plugin.X509Identity;
-import software.amazon.rolesanywhere.plugin.CertificateUtils;
+import software.amazon.rolesanywhere.plugin.X509IdentityProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import java.nio.file.Paths;
 
-// Loading the certificate and private key inside the identityProvider lambda
-// limits how long the private key is held in memory.
+// fromFiles re-reads the cert and key on every credential refresh, so on-disk
+// rotation is picked up automatically without restarting the process.
 RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
-    .identityProvider(() -> {
-        X509Certificate certificate = CertificateUtils.loadCertificate(Paths.get("path/to/certificate.pem"));
-        PrivateKey privateKey = CertificateUtils.loadPrivateKey(Paths.get("path/to/private-key.pem"), "RSA");
-        return new X509Identity(certificate, privateKey);
-    })
+    .identityProvider(X509IdentityProvider.fromFiles(
+        Paths.get("path/to/certificate.pem"),
+        Paths.get("path/to/private-key.pem"),
+        "RSA"))
     .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/12345678-1234-1234-1234-123456789012")
     .profileArn("arn:aws:rolesanywhere:us-east-1:123456789012:profile/12345678-1234-1234-1234-123456789012")
     .roleArn("arn:aws:iam::123456789012:role/MyApplicationRole")
@@ -56,30 +54,44 @@ s3Client.listBuckets();
 
 Adding the plugin to a non-AWS SDK client throws `IllegalStateException` at configuration time.
 
+If the SDK client already has a `credentialsProvider` configured, the plugin
+composes with it via `AwsCredentialsProviderChain` — the customer's provider
+is tried first, and `RolesAnywhereCredentialsProvider` is the fallback. The
+plugin never silently overwrites explicit customer configuration.
+
+## Choosing an X509IdentityProvider
+
+Pick one of the pre-built factories for the common cases; implement
+`resolve()` yourself only when the certificate + key come from a dynamic
+backend.
+
+| Factory | When to use |
+|---------|-------------|
+| `X509IdentityProvider.fromFiles(cert, key, alg)` | Certificate and PKCS#8 key on local disk. Re-read on every refresh so on-disk rotation is picked up automatically. |
+| `X509IdentityProvider.fromFiles(cert, key, alg, password)` | Same, for password-protected PKCS#8 keys. |
+| `X509IdentityProvider.fromFiles(cert, key, alg, chain)` | Same, with a separate intermediate chain file. |
+| `X509IdentityProvider.fromFiles(cert, key, alg, chain, password)` | Password-protected key with intermediate chain. |
+| `X509IdentityProvider.ofStatic(identity)` | Identity is embedded/static (tests, HSM handles built once). Same object reused every refresh; the private key is never destroyed. |
+| Custom `resolve()` lambda | Fetching from Secrets Manager, Parameter Store, S3, ACM PCA, KeyStore/PKCS#11, or any dynamic source. Combine with `X509Identity.fromPem(...)` if the source returns PEM strings. |
+
 ### Complete Example with Certificate Loading
 
 ```java
 import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
-import software.amazon.rolesanywhere.plugin.X509Identity;
-import software.amazon.rolesanywhere.plugin.CertificateUtils;
+import software.amazon.rolesanywhere.plugin.X509IdentityProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import java.nio.file.Paths;
-import java.security.PrivateKey;
-import java.security.cert.X509Certificate;
 
 public class RolesAnywhereExample {
 
     public static void main(String[] args) throws Exception {
-        // Loading the certificate and private key inside the identityProvider
-        // lambda limits how long the private key is held in memory.
         RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
-            .identityProvider(() -> {
-                X509Certificate certificate = CertificateUtils.loadCertificate(Paths.get("client-cert.pem"));
-                PrivateKey privateKey = CertificateUtils.loadPrivateKey(Paths.get("client-key.pem"), "RSA");
-                return new X509Identity(certificate, privateKey);
-            })
+            .identityProvider(X509IdentityProvider.fromFiles(
+                Paths.get("client-cert.pem"),
+                Paths.get("client-key.pem"),
+                "RSA"))
             .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-12345")
             .profileArn("arn:aws:rolesanywhere:us-east-1:123456789012:profile/profile-12345")
             .roleArn("arn:aws:iam::123456789012:role/MyRole")
@@ -104,7 +116,7 @@ public class RolesAnywhereExample {
 
 ### Required Parameters
 
-- **identityProvider**: X509IdentityProvider that supplies the certificate and private key
+- **identityProvider**: `X509IdentityProvider` that supplies the certificate and private key on every credential refresh
 - **trustAnchorArn**: ARN of the trust anchor registered in IAM Roles Anywhere
 - **profileArn**: ARN of the profile that defines role assumption rules
 - **roleArn**: ARN of the IAM role to assume
@@ -115,8 +127,11 @@ public class RolesAnywhereExample {
 - **roleSessionName**: Name for the role session (default: generated)
 - **durationSeconds**: Duration of the AWS credentials session in seconds (900-43200, default: 3600)
 - **endpoint**: Custom endpoint URI for testing or special configurations
-- **fipsEnabled**: Use FIPS endpoints (default: false)
-- **dualStackEnabled**: Use dual-stack IPv4/IPv6 endpoints (default: false)
+- **fipsEnabled**: Use FIPS endpoints. `null` (default, unset — resolves to
+  non-FIPS), `true`, or `false`. FIPS endpoints are only available in US
+  regions and AWS GovCloud.
+- **dualStackEnabled**: Use dual-stack IPv4/IPv6 endpoints. `null` (default,
+  unset — resolves to non-dual-stack), `true`, or `false`.
 - **httpClient**: Custom HTTP client
 - **staleTime**: How early before AWS credential expiration to trigger a refresh. Defaults to 5 minutes.
 - **minRefreshInterval**: Minimum interval between credential refresh cycles to prevent retry storms. Defaults to 5 minutes. Cannot be less than 30 seconds (use `Duration.ZERO` to disable).
@@ -136,7 +151,7 @@ This means you can often omit the region entirely:
 ```java
 // Region will be automatically inferred from ARNs or environment
 RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
-    .identityProvider(() -> identity)
+    .identityProvider(X509IdentityProvider.ofStatic(identity))
     .trustAnchorArn("arn:aws:rolesanywhere:eu-west-1:123456789012:trust-anchor/ta-12345")
     .profileArn("arn:aws:rolesanywhere:eu-west-1:123456789012:profile/profile-12345")
     .roleArn("arn:aws:iam::123456789012:role/MyRole")
@@ -153,7 +168,7 @@ import software.amazon.rolesanywhere.plugin.RolesAnywhereCredentialsProvider;
 import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
 
 RolesAnywhereCredentialsProvider provider = RolesAnywhereCredentialsProvider.builder()
-    .identityProvider(() -> identity)
+    .identityProvider(X509IdentityProvider.ofStatic(identity))
     .trustAnchorArn(/* ... */)
     .profileArn(/* ... */)
     .roleArn(/* ... */)
@@ -176,17 +191,17 @@ For certificates signed by intermediate CAs, include the certificate chain:
 
 ```java
 List<X509Certificate> intermediates = Arrays.asList(intermediateCert1, intermediateCert2);
-X509Identity identity = new X509Identity(leafCertificate, privateKey, intermediates);
+X509Identity identity = X509Identity.create(leafCertificate, privateKey, intermediates);
 ```
 
 ## Using with AWS Private CA (ACM PCA)
 
-For certificates issued by [AWS Private CA](https://docs.aws.amazon.com/privateca/latest/userguide/), you can use the `X509IdentityProvider` to dynamically issue and load short-lived certificates. This keeps the private key in memory only during credential signing and handles errors gracefully via `IdentityProviderException`.
+For certificates issued by [AWS Private CA](https://docs.aws.amazon.com/privateca/latest/userguide/), implement `X509IdentityProvider.resolve()` to dynamically issue and load short-lived certificates. The private key stays in memory only during credential signing.
 
 ```java
 import software.amazon.rolesanywhere.plugin.RolesAnywherePlugin;
 import software.amazon.rolesanywhere.plugin.X509Identity;
-import software.amazon.rolesanywhere.plugin.IdentityProviderException;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.acmpca.AcmPcaClient;
 import software.amazon.awssdk.services.acmpca.model.*;
 import software.amazon.awssdk.services.acmpca.waiters.AcmPcaWaiter;
@@ -235,10 +250,12 @@ RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
                     .certificateArn(issueResponse.certificateArn())
                     .build());
 
-            X509Certificate certificate = CertificateUtils.readCertificateData(certResponse.certificate());
-            return new X509Identity(certificate, keyPair.getPrivate());
+            return X509Identity.fromPem(
+                certResponse.certificate(),
+                pemEncode(keyPair.getPrivate()),
+                "RSA");
         } catch (Exception e) {
-            throw new IdentityProviderException("Failed to issue certificate from ACM PCA", e);
+            throw SdkClientException.create("Failed to issue certificate from ACM PCA", e);
         }
     })
     .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-12345")
@@ -251,7 +268,7 @@ RolesAnywherePlugin plugin = RolesAnywherePlugin.builder()
 
 This pattern:
 - **Minimizes key exposure**: The private key is a local variable, eligible for GC after signing
-- **Handles failures**: Wraps errors in `IdentityProviderException` so callers get a clear signal
+- **Handles failures**: Wraps errors in `SdkClientException` so callers get a clear, unchecked signal
 - **Prevents retry storms**: `minRefreshInterval` ensures ACM PCA isn't called more than once per interval even if credentials are expired
 
 ## Key Type Support
@@ -263,15 +280,18 @@ When loading private keys, you must specify the key algorithm type:
 - **ML-DSA keys**: Use `"ML-DSA"` as the key type. ML-DSA requires a JCE provider such as BouncyCastle. The provider only needs to be registered once during application startup.
 
 ```java
-// For RSA keys
-PrivateKey rsaKey = CertificateUtils.loadPrivateKey(Paths.get("rsa-key.pem"), "RSA");
+// RSA
+X509IdentityProvider rsa = X509IdentityProvider.fromFiles(
+    Paths.get("rsa-cert.pem"), Paths.get("rsa-key.pem"), "RSA");
 
-// For EC keys
-PrivateKey ecKey = CertificateUtils.loadPrivateKey(Paths.get("ec-key.pem"), "EC");
+// EC
+X509IdentityProvider ec = X509IdentityProvider.fromFiles(
+    Paths.get("ec-cert.pem"), Paths.get("ec-key.pem"), "EC");
 
-// For ML-DSA keys — register a supporting JCE provider at application startup
+// ML-DSA — register a supporting JCE provider at application startup
 Security.addProvider(new BouncyCastleProvider());
-PrivateKey mldsaKey = CertificateUtils.loadPrivateKey(Paths.get("mldsa-key.pem"), "ML-DSA");
+X509IdentityProvider mldsa = X509IdentityProvider.fromFiles(
+    Paths.get("mldsa-cert.pem"), Paths.get("mldsa-key.pem"), "ML-DSA");
 ```
 
 ## Error Handling
@@ -279,8 +299,7 @@ PrivateKey mldsaKey = CertificateUtils.loadPrivateKey(Paths.get("mldsa-key.pem")
 The provider validates all inputs and throws descriptive exceptions:
 
 - `IllegalArgumentException`: Invalid ARNs, missing required parameters
-- `IdentityProviderException`: The identity provider failed to create an identity (e.g., certificate store unavailable, HSM error). Wrapped in `SdkClientException` when surfaced from `resolveCredentials()` — retrieve via `getCause()`
-- `SdkClientException`: Network errors, invalid responses from AWS, or wrapped `IdentityProviderException`
+- `SdkClientException`: `X509IdentityProvider` failed (cert store unavailable, HSM error, IO), network errors, or invalid responses from AWS
 - `SdkServiceException`: IAM Roles Anywhere returned an error response. Includes expired or otherwise invalid certificates (validated server-side as part of `CreateSession`)
 
 ## Security Best Practices
@@ -290,6 +309,22 @@ The provider validates all inputs and throws descriptive exceptions:
 3. **Least Privilege**: Grant minimal necessary permissions to the IAM role
 4. **Monitor Usage**: Use AWS CloudTrail to monitor credential usage
 5. **Validate Certificates**: Ensure certificates are valid and not expired
+6. **Private key lifecycle**: Every `X509Identity` carries an ownership bit
+   that controls whether the plugin will call `PrivateKey.destroy()` on the
+   key after each `CreateSession` signing. JCE providers that honor
+   `Destroyable` (BouncyCastle, some HSM providers) will zero their internal
+   secret state; JDK-bundled providers throw `DestroyFailedException`, which
+   the plugin swallows at debug log level.
+   - `X509Identity.create(cert, privateKey, ...)`,
+     `X509Identity.fromPem(...)`, and `X509IdentityProvider.fromFiles(...)`
+     are **plugin-owned**: the private key is destroyed after use. This is
+     the safe default for keys loaded per refresh (disk, Secrets Manager,
+     Parameter Store, dynamic ACM PCA issuance).
+   - `X509Identity.createWithoutDestroyingKey(cert, privateKey, ...)` and
+     `X509IdentityProvider.ofStatic(...)` are **caller-owned**: the plugin
+     never destroys the key. Use these for HSM handles, PKCS#11 keys, or
+     any key shared across other JCE consumers, where destroying would
+     break the next refresh or another subsystem.
 
 ### A note on the test fixtures in this repo
 
@@ -398,7 +433,7 @@ This is a Java library built with Gradle.
 
 ### Dependencies
 - AWS SDK for Java v2
-- Java 17 or higher
+- Java 8 or higher
 
 ## References
 

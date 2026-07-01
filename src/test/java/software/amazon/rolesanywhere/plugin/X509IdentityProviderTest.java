@@ -11,85 +11,63 @@ import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.core.exception.SdkClientException;
 
 public class X509IdentityProviderTest {
 
-    // Happy path — provider returns valid identity
     @Test
-    public void testGetIdentityReturnsValidIdentity() throws Exception {
-        X509Identity expected = createTestIdentity();
+    public void testResolveReturnsValidKeyMaterial() throws Exception {
+        X509Identity expected = createTestKeyMaterial();
         X509IdentityProvider provider = () -> expected;
 
-        X509Identity result = provider.create();
+        X509Identity result = provider.resolve();
 
         assertNotNull(result);
         assertEquals(expected.certificate(), result.certificate());
         assertEquals(expected.privateKey(), result.privateKey());
     }
 
-    // Refresh — provider returns new identity on each call (cert rotation)
     @Test
-    public void testGetIdentityReturnsFreshIdentityOnEachCall() throws Exception {
-        X509Identity identity1 = createTestIdentity();
-        X509Identity identity2 = createTestIdentity();
+    public void testResolveReturnsFreshKeyMaterialOnEachCall() throws Exception {
+        X509Identity km1 = createTestKeyMaterial();
+        X509Identity km2 = createTestKeyMaterial();
         AtomicInteger callCount = new AtomicInteger(0);
 
-        X509IdentityProvider provider = () -> {
-            if (callCount.getAndIncrement() == 0) {
-                return identity1;
-            }
-            return identity2;
-        };
+        X509IdentityProvider provider = () -> callCount.getAndIncrement() == 0 ? km1 : km2;
 
-        assertEquals(identity1, provider.create());
-        assertEquals(identity2, provider.create());
+        assertEquals(km1, provider.resolve());
+        assertEquals(km2, provider.resolve());
     }
 
-    // Null return — should fail clearly downstream
     @Test
-    public void testGetIdentityReturnsNullHandledGracefully() throws Exception {
+    public void testResolveNullReturnedByProvider() {
         X509IdentityProvider provider = () -> null;
-
-        assertNull(provider.create());
+        assertNull(provider.resolve());
     }
 
-    // Exception propagation — provider throws at runtime
     @Test
-    public void testGetIdentityThrowsExceptionPropagates() {
+    public void testResolveThrowsSdkClientException() {
         X509IdentityProvider provider = () -> {
-            throw new IdentityProviderException("cert store unavailable");
+            throw SdkClientException.create("cert store unavailable");
         };
 
-        assertThrows(IdentityProviderException.class, provider::create);
+        assertThrows(SdkClientException.class, provider::resolve);
     }
 
-    // Thread safety — concurrent calls to a stateful provider don't corrupt state
     @Test
-    public void testGetIdentityConcurrentAccessNoCorruption() throws Exception {
-        X509Identity identity1 = createTestIdentity();
-        X509Identity identity2 = createTestIdentity();
+    public void testResolveConcurrentAccessNoCorruption() throws Exception {
+        X509Identity km1 = createTestKeyMaterial();
+        X509Identity km2 = createTestKeyMaterial();
         AtomicInteger counter = new AtomicInteger(0);
 
-        // Stateful provider that rotates between two identities
-        X509IdentityProvider provider = () -> {
-            if (counter.getAndIncrement() % 2 == 0) {
-                return identity1;
-            }
-            return identity2;
-        };
+        X509IdentityProvider provider = () -> counter.getAndIncrement() % 2 == 0 ? km1 : km2;
 
         int threadCount = 10;
         Thread[] threads = new Thread[threadCount];
         X509Identity[] results = new X509Identity[threadCount];
         for (int i = 0; i < threadCount; i++) {
             int index = i;
-            threads[i] = new Thread(() -> {
-                try {
-                    results[index] = provider.create();
-                } catch (IdentityProviderException e) {
-                    throw new RuntimeException(e);
-                }
-            });
+            threads[i] = new Thread(() -> results[index] = provider.resolve());
             threads[i].start();
         }
         for (Thread thread : threads) {
@@ -101,10 +79,22 @@ public class X509IdentityProviderTest {
         assertEquals(threadCount, counter.get());
     }
 
-    private X509Identity createTestIdentity() throws Exception {
+    @Test
+    public void testOfStaticReturnsSameIdentityEveryTime() throws Exception {
+        X509Identity km = createTestKeyMaterial();
+        X509IdentityProvider provider = X509IdentityProvider.ofStatic(km);
+
+        X509Identity first = provider.resolve();
+        X509Identity second = provider.resolve();
+        assertEquals(first, second);
+        assertEquals(km.certificate(), first.certificate());
+        assertEquals(km.privateKey(), first.privateKey());
+    }
+
+    private X509Identity createTestKeyMaterial() throws Exception {
         X509Certificate certificate = mock(X509Certificate.class);
         PrivateKey privateKey =
                 KeyPairGenerator.getInstance("RSA").generateKeyPair().getPrivate();
-        return new X509Identity(certificate, privateKey);
+        return X509Identity.create(certificate, privateKey);
     }
 }

@@ -6,6 +6,8 @@ import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.spec.InvalidKeySpecException;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import javax.crypto.Cipher;
 import javax.crypto.EncryptedPrivateKeyInfo;
@@ -34,16 +36,23 @@ final class Pbes2Decoder {
     private static final String OID_PBKDF2 = "1.2.840.113549.1.5.12";
     private static final String OID_SCRYPT = "1.3.6.1.4.1.11591.4.11";
 
-    private static final Map<String, String> PRF_OID_TO_HMAC = Map.of(
-            "1.2.840.113549.2.7", "HmacSHA1",
-            "1.2.840.113549.2.9", "HmacSHA256",
-            "1.2.840.113549.2.10", "HmacSHA384",
-            "1.2.840.113549.2.11", "HmacSHA512");
+    private static final Map<String, String> PRF_OID_TO_HMAC;
+    private static final Map<String, String> CIPHER_OID_TO_NAME;
 
-    private static final Map<String, String> CIPHER_OID_TO_NAME = Map.of(
-            "2.16.840.1.101.3.4.1.2", "AES_128",
-            "2.16.840.1.101.3.4.1.22", "AES_192",
-            "2.16.840.1.101.3.4.1.42", "AES_256");
+    static {
+        Map<String, String> prf = new HashMap<>();
+        prf.put("1.2.840.113549.2.7", "HmacSHA1");
+        prf.put("1.2.840.113549.2.9", "HmacSHA256");
+        prf.put("1.2.840.113549.2.10", "HmacSHA384");
+        prf.put("1.2.840.113549.2.11", "HmacSHA512");
+        PRF_OID_TO_HMAC = Collections.unmodifiableMap(prf);
+
+        Map<String, String> cipher = new HashMap<>();
+        cipher.put("2.16.840.1.101.3.4.1.2", "AES_128");
+        cipher.put("2.16.840.1.101.3.4.1.22", "AES_192");
+        cipher.put("2.16.840.1.101.3.4.1.42", "AES_256");
+        CIPHER_OID_TO_NAME = Collections.unmodifiableMap(cipher);
+    }
 
     private Pbes2Decoder() {}
 

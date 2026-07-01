@@ -1,15 +1,20 @@
 package software.amazon.rolesanywhere.plugin;
 
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
 import software.amazon.awssdk.awscore.AwsServiceClientConfiguration;
 import software.amazon.awssdk.core.SdkServiceClientConfiguration;
+import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity;
+import software.amazon.awssdk.identity.spi.IdentityProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.rolesanywhere.RolesAnywhereServiceClientConfiguration;
 
@@ -24,6 +29,33 @@ class RolesAnywherePluginTest {
         plugin.configureClient(awsConfig);
 
         verify(awsConfig).credentialsProvider(provider);
+    }
+
+    @Test
+    void configureClient_composesWithExistingProvider() {
+        RolesAnywhereCredentialsProvider ourProvider = mock(RolesAnywhereCredentialsProvider.class);
+        IdentityProvider<? extends AwsCredentialsIdentity> existing = mock(IdentityProvider.class);
+        AwsServiceClientConfiguration.Builder awsConfig = RolesAnywhereServiceClientConfiguration.builder();
+        awsConfig.credentialsProvider(existing);
+
+        RolesAnywherePlugin.create(ourProvider).configureClient(awsConfig);
+
+        assertInstanceOf(
+                AwsCredentialsProviderChain.class,
+                awsConfig.credentialsProvider(),
+                "When customer already set a credentials provider, plugin must compose via a chain,"
+                        + " not overwrite the customer's config.");
+    }
+
+    @Test
+    void configureClient_noExistingProvider_setsOursDirectly() {
+        RolesAnywhereCredentialsProvider ourProvider = mock(RolesAnywhereCredentialsProvider.class);
+        AwsServiceClientConfiguration.Builder awsConfig = mock(AwsServiceClientConfiguration.Builder.class);
+        when(awsConfig.credentialsProvider()).thenReturn(null);
+
+        RolesAnywherePlugin.create(ourProvider).configureClient(awsConfig);
+
+        verify(awsConfig).credentialsProvider(ourProvider);
     }
 
     @Test

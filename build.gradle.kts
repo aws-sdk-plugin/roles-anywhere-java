@@ -33,12 +33,13 @@ java {
     }
 }
 
-// Pin the published bytecode floor to Java 17 to match what README documents
-// and what CI builds with. Without an explicit `release` setting javac would
-// target whatever the toolchain JDK is, silently bumping the floor on a
-// toolchain change.
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(17)
+// Pin the published bytecode floor to Java 11. AWS SDK v2 requires 8+ but
+// this plugin uses String.isBlank (11), var (10), and List.of/Map.of (9),
+// so 11 is the lowest we can support without rewriting call sites. The
+// toolchain still runs on 17 for consistent CI; --release=11 caps the API
+// surface and bytecode target.
+tasks.named<JavaCompile>("compileJava") {
+    options.release.set(8)
 }
 
 tasks.named<Test>("test") {

@@ -126,11 +126,12 @@ class CertificateUtilsTest {
     void toStringRedactsSerialAndOmitsSubject() throws Exception {
         X509Certificate cert = CertificateUtils.loadCertificate(CERTS_DIR.resolve("simple-leaf.pem"));
         PrivateKey key = CertificateUtils.loadPrivateKey(CERTS_DIR.resolve("simple-leaf-key.pem"), "RSA");
-        X509Identity identity = new X509Identity(cert, key);
+        X509Identity identity = X509Identity.create(cert, key);
 
         String result = identity.toString();
 
-        assertTrue(result.startsWith("X509Credentials{serialNumber=***"));
+        assertTrue(result.contains("X509Identity"));
+        assertTrue(result.contains("serialNumber=***"));
         assertTrue(result.contains("chainSize="));
         assertFalse(result.contains("subject"), "subject DN must not appear in toString");
         // Full serial must not appear

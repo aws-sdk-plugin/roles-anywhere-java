@@ -160,7 +160,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
                 java.util.Properties props = new java.util.Properties();
                 props.load(in);
                 String version = props.getProperty("version");
-                if (version != null && !version.isBlank()) {
+                if (version != null && !version.trim().isEmpty()) {
                     return version.trim();
                 }
             }
@@ -168,7 +168,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
             // Fall through — resource unreadable, try manifest.
         }
         String manifestVersion = X509Signer.class.getPackage().getImplementationVersion();
-        if (manifestVersion != null && !manifestVersion.isBlank()) {
+        if (manifestVersion != null && !manifestVersion.trim().isEmpty()) {
             return manifestVersion;
         }
         return "unknown";
@@ -293,7 +293,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
      */
     @Override
     public CompletableFuture<AsyncSignedRequest> signAsync(AsyncSignRequest<? extends X509Identity> asyncSignRequest) {
-        if (asyncSignRequest.payload().isEmpty()) {
+        if (!asyncSignRequest.payload().isPresent()) {
             SignedRequest signed = sign(SignRequest.builder(asyncSignRequest.identity())
                     .request(asyncSignRequest.request())
                     .build());
@@ -368,7 +368,7 @@ final class X509Signer implements HttpSigner<X509Identity> {
             throws SecurityException {
 
         // Create X509Identity and SignRequest to delegate to the new sign method
-        X509Identity identity = new X509Identity(certificate, privateKey, certificateChain);
+        X509Identity identity = X509Identity.create(certificate, privateKey, certificateChain);
 
         SignRequest.Builder<X509Identity> signRequestBuilder =
                 SignRequest.builder(identity).request(request);
@@ -400,8 +400,13 @@ final class X509Signer implements HttpSigner<X509Identity> {
             if (signRequest.payload().isPresent()) {
                 try (java.io.InputStream inputStream =
                         signRequest.payload().get().newStream()) {
-                    byte[] content = inputStream.readAllBytes();
-                    return BinaryUtils.toHex(digest.digest(content));
+                    java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                    byte[] chunk = new byte[8192];
+                    int n;
+                    while ((n = inputStream.read(chunk)) != -1) {
+                        buf.write(chunk, 0, n);
+                    }
+                    return BinaryUtils.toHex(digest.digest(buf.toByteArray()));
                 } catch (Exception e) {
                     LOG.error(() -> "Exception while parsing request payload contents", e);
                 }
