@@ -285,11 +285,6 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
         }
     }
 
-    /**
-     * Creates a default HTTP client with appropriate timeout configuration.
-     *
-     * @return Configured SdkHttpClient
-     */
     @Override
     public String toString() {
         return ToString.builder("RolesAnywhereCredentialsProvider")
@@ -307,6 +302,11 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
                 .build();
     }
 
+    /**
+     * Creates a default HTTP client with appropriate timeout configuration.
+     *
+     * @return Configured SdkHttpClient
+     */
     private static SdkHttpClient createDefaultHttpClient() {
         return ApacheHttpClient.builder()
                 .connectionTimeout(DEFAULT_CONNECTION_TIMEOUT)
