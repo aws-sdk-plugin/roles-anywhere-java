@@ -133,6 +133,9 @@ public final class X509Identity implements Identity {
      * @param certificatePem PEM-encoded X.509 certificate
      * @param privateKeyPem  PEM-encoded PKCS#8 private key (unencrypted)
      * @param keyAlgorithm   JCA algorithm name (e.g. "RSA", "EC", "EdDSA")
+     * @throws SdkClientException if either PEM string cannot be parsed or the
+     *         key algorithm is not available in the JCE provider (wraps
+     *         {@link java.security.GeneralSecurityException}).
      */
     public static X509Identity fromPem(String certificatePem, String privateKeyPem, String keyAlgorithm) {
         try {

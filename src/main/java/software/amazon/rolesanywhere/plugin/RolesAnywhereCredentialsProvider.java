@@ -187,6 +187,15 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
      * Resolves AWS credentials for IAM Roles Anywhere. Delegates entirely to
      * {@link CachedSupplier}; cache state, refresh scheduling, concurrency,
      * and stale-value handling all live there.
+     *
+     * @throws SdkClientException if the initial refresh cannot produce
+     *         credentials — for example, the {@link X509IdentityProvider}
+     *         throws, signing fails, the {@code CreateSession} HTTP request
+     *         errors out, the service returns a non-2xx response, or the
+     *         refresh throttle rejects a retry on cold start with no cached
+     *         value. Once a refresh succeeds, subsequent stale-value failures
+     *         are absorbed by {@code StaleValueBehavior.ALLOW} and the last
+     *         known good credentials are returned instead of throwing.
      */
     @Override
     public AwsCredentials resolveCredentials() {
@@ -664,6 +673,8 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param staleTime duration before AWS credential expiration to trigger refresh
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code staleTime} is {@code null}
+         *         or a negative duration.
          */
         public Builder staleTime(Duration staleTime) {
             if (staleTime == null) {
@@ -692,6 +703,9 @@ public final class RolesAnywhereCredentialsProvider implements AwsCredentialsPro
          *
          * @param minRefreshInterval minimum duration between refresh attempts
          * @return This builder instance
+         * @throws IllegalArgumentException if {@code minRefreshInterval} is
+         *         {@code null} or is non-zero and less than the 30-second
+         *         floor. Use {@link Duration#ZERO} to disable throttling.
          */
         @SuppressWarnings("JavaDurationGetSecondsToToSeconds") // getSeconds() is Java 8; toSeconds() is Java 9+
         public Builder minRefreshInterval(Duration minRefreshInterval) {

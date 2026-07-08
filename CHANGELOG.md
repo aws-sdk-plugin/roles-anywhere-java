@@ -31,6 +31,8 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 - *(build)* Correct stale Java 11 floor comment to Java 8
 - *(plugin)* Move createDefaultHttpClient() Javadoc to its method
 - *(contributing)* Document local git-secrets setup
+- Generate CHANGELOG.md from commit log via git-cliff
+- *(plugin)* Document throws contract on public API methods
 
 ### Features
 
