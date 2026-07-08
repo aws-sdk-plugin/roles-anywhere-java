@@ -40,6 +40,34 @@ GitHub provides additional document on [forking a repository](https://help.githu
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
 
 
+## Pre-commit secret scanning
+
+CI blocks any PR that introduces an AWS credential or other well-known
+secret pattern (see `.github/workflows/git-secrets.yml`). Catch these
+before you push by installing [`git-secrets`][gs] and enabling its hooks
+in your local clone:
+
+```sh
+# macOS
+brew install git-secrets
+
+# Linux
+git clone --depth 1 https://github.com/awslabs/git-secrets.git
+sudo make -C git-secrets install
+
+# Inside your clone of this repo
+git secrets --install
+git secrets --register-aws
+```
+
+`git secrets --install` writes `pre-commit`, `commit-msg`, and
+`prepare-commit-msg` hooks that scan staged content against the AWS
+patterns (and any custom patterns you add). `git secrets --scan` and
+`git secrets --scan-history` run the same check on demand.
+
+[gs]: https://github.com/awslabs/git-secrets
+
+
 ## Finding contributions to work on
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
 
