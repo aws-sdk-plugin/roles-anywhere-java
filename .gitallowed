@@ -1,0 +1,7 @@
+# Test-only fixtures: locally-generated certificates and PKCS#8 keys used by the
+# unit test suite. They grant no access to any real system. See
+# src/test/resources/certificates/README.md for the rationale and the
+# regeneration script.
+src/test/resources/certificates/.*\.pem$
+src/test/resources/certificates/.*\.pkcs8$
+src/test/resources/certificates/.*\.der$
