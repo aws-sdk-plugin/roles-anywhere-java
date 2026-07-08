@@ -32,6 +32,7 @@ class RolesAnywherePluginTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void configureClient_composesWithExistingProvider() {
         RolesAnywhereCredentialsProvider ourProvider = mock(RolesAnywhereCredentialsProvider.class);
         IdentityProvider<? extends AwsCredentialsIdentity> existing = mock(IdentityProvider.class);
