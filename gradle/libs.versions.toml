@@ -10,7 +10,7 @@ spotbugs-annotations = "4.8.6"
 errorprone-core = "2.36.0"
 palantir-java-format = "2.89.0"
 checkstyle-tool = "10.18.2"
-spotless-plugin = "8.7.0"
+spotless-plugin = "8.8.0"
 errorprone-plugin = "4.1.0"
 spotbugs-plugin = "6.1.2"
 
