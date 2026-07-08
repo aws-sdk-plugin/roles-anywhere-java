@@ -33,10 +33,8 @@ java {
     }
 }
 
-// Pin the published bytecode floor to Java 11. AWS SDK v2 requires 8+ but
-// this plugin uses String.isBlank (11), var (10), and List.of/Map.of (9),
-// so 11 is the lowest we can support without rewriting call sites. The
-// toolchain still runs on 17 for consistent CI; --release=11 caps the API
+// Pin the published bytecode floor to Java 8 to match AWS SDK v2's minimum.
+// The toolchain still runs on 17 for consistent CI; --release=8 caps the API
 // surface and bytecode target.
 tasks.named<JavaCompile>("compileJava") {
     options.release.set(8)
