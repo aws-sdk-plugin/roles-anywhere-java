@@ -1,6 +1,7 @@
 package software.amazon.rolesanywhere.plugin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -91,9 +92,9 @@ class X509SignerTest {
         String resolved = X509Signer.resolveVersion();
 
         assertNotNull(resolved, "resolveVersion() must never return null");
-        assertEquals(
-                "unknown".equals(resolved),
-                false,
+        assertNotEquals(
+                "unknown",
+                resolved,
                 "Version resource missing — build.gradle.kts should generate META-INF/rolesanywhere-plugin-version.properties");
 
         // Cross-check against the same resource, loaded independently, to prove
