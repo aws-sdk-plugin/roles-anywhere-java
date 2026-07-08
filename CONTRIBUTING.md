@@ -68,6 +68,30 @@ patterns (and any custom patterns you add). `git secrets --scan` and
 [gs]: https://github.com/awslabs/git-secrets
 
 
+## Conventional Commits and CHANGELOG.md
+
+Every commit on `main` MUST follow the
+[Conventional Commits](https://www.conventionalcommits.org/) format
+(`feat(scope): …`, `fix: …`, `docs: …`, etc.). The `CHANGELOG.md` file
+at the repo root is generated from the commit log by
+[`git-cliff`](https://git-cliff.org/) using `cliff.toml`, so a
+non-conventional commit will be silently dropped from the release notes.
+
+To regenerate `CHANGELOG.md` locally before cutting a release:
+
+```sh
+# Install once
+brew install git-cliff              # macOS
+# or: cargo install git-cliff
+
+# Regenerate the "Unreleased" section from the current commit log
+git-cliff --unreleased --output CHANGELOG.md
+
+# When cutting a release, pass the new tag so the section becomes versioned
+git-cliff --tag v1.0.0 --output CHANGELOG.md
+```
+
+
 ## Finding contributions to work on
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
 
