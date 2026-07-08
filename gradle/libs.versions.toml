@@ -1,7 +1,7 @@
 # Single source of truth for dependency and plugin versions. Referenced from
 # build.gradle.kts and the convention plugins in buildSrc.
 [versions]
-awssdk = "2.46.13"
+awssdk = "2.47.1"
 junit = "6.1.0"
 junit-platform = "6.1.0"
 mockito = "5.23.0"
