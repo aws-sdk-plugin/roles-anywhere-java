@@ -19,6 +19,14 @@ tasks.withType<Javadoc>().configureEach {
     }
 }
 
+// Byte-identical JARs across rebuilds of the same source revision. Zeros out
+// entry timestamps and sorts entries deterministically so a reviewer can
+// verify the Central-published artifact against a local rebuild via SHA-256.
+tasks.withType<Jar>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+}
+
 publishing {
     publications {
         create<MavenPublication>("mavenJava") {

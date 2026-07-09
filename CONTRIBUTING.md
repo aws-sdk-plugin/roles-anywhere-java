@@ -40,6 +40,58 @@ GitHub provides additional document on [forking a repository](https://help.githu
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
 
 
+## Pre-commit secret scanning
+
+CI blocks any PR that introduces an AWS credential or other well-known
+secret pattern (see `.github/workflows/git-secrets.yml`). Catch these
+before you push by installing [`git-secrets`][gs] and enabling its hooks
+in your local clone:
+
+```sh
+# macOS
+brew install git-secrets
+
+# Linux
+git clone --depth 1 https://github.com/awslabs/git-secrets.git
+sudo make -C git-secrets install
+
+# Inside your clone of this repo
+git secrets --install
+git secrets --register-aws
+```
+
+`git secrets --install` writes `pre-commit`, `commit-msg`, and
+`prepare-commit-msg` hooks that scan staged content against the AWS
+patterns (and any custom patterns you add). `git secrets --scan` and
+`git secrets --scan-history` run the same check on demand.
+
+[gs]: https://github.com/awslabs/git-secrets
+
+
+## Conventional Commits and CHANGELOG.md
+
+Every commit on `main` MUST follow the
+[Conventional Commits](https://www.conventionalcommits.org/) format
+(`feat(scope): …`, `fix: …`, `docs: …`, etc.). The `CHANGELOG.md` file
+at the repo root is generated from the commit log by
+[`git-cliff`](https://git-cliff.org/) using `cliff.toml`, so a
+non-conventional commit will be silently dropped from the release notes.
+
+To regenerate `CHANGELOG.md` locally before cutting a release:
+
+```sh
+# Install once
+brew install git-cliff              # macOS
+# or: cargo install git-cliff
+
+# Regenerate the "Unreleased" section from the current commit log
+git-cliff --unreleased --output CHANGELOG.md
+
+# When cutting a release, pass the new tag so the section becomes versioned
+git-cliff --tag v1.0.0 --output CHANGELOG.md
+```
+
+
 ## Finding contributions to work on
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any 'help wanted' issues is a great place to start.
 

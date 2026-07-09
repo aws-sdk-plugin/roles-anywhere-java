@@ -3,6 +3,7 @@ package software.amazon.rolesanywhere.plugin;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -524,13 +525,14 @@ public class RolesAnywhereCredentialsProviderTest {
         Path certPath = Paths.get(certPathStr);
         Path keyPath = Paths.get(keyPathStr);
 
-        // Skip test if certificates are not available
-        if (!Files.exists(certPath) || !Files.exists(keyPath)) {
-            System.out.println("Skipping real certificate test - certificates not found at:");
-            System.out.println("  Certificate: " + certPath.toAbsolutePath());
-            System.out.println("  Private Key: " + keyPath.toAbsolutePath());
-            return;
-        }
+        // Skip test if certificates are not available. Use assumeTrue so JUnit
+        // reports the test as aborted/skipped rather than passed.
+        assumeTrue(
+                Files.exists(certPath) && Files.exists(keyPath),
+                "Skipping real certificate test - certificates not found at: Certificate="
+                        + certPath.toAbsolutePath()
+                        + ", Private Key="
+                        + keyPath.toAbsolutePath());
 
         try {
             X509Certificate certificate = CertificateUtils.loadCertificate(certPath);

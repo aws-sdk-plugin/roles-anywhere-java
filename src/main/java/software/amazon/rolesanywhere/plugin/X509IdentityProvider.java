@@ -47,6 +47,13 @@ public interface X509IdentityProvider extends IdentityProvider<X509Identity> {
         return X509Identity.class;
     }
 
+    /**
+     * SDK bridge to {@link #resolve()}. Any {@link RuntimeException} thrown by
+     * {@code resolve()} — commonly {@link SdkClientException} — is surfaced
+     * through the returned future via
+     * {@link CompletableFuture#completeExceptionally(Throwable)} rather than
+     * thrown synchronously.
+     */
     @Override
     default CompletableFuture<? extends X509Identity> resolveIdentity(ResolveIdentityRequest request) {
         try {
@@ -63,9 +70,14 @@ public interface X509IdentityProvider extends IdentityProvider<X509Identity> {
      * on every refresh, so on-disk rotation is picked up without restarting
      * the process. The private key is destroyed after each signing.
      *
+     * <p>The factory itself only validates arguments; the disk I/O and parsing
+     * happen inside {@link #resolve()} on every credential refresh. Failures
+     * there surface as {@link SdkClientException} (see {@link #resolve()}).
+     *
      * @param certificate  path to a PEM-encoded X.509 certificate
      * @param privateKey   path to a PEM-encoded PKCS#8 private key (unencrypted)
      * @param keyAlgorithm JCA algorithm name (e.g. "RSA", "EC", "EdDSA")
+     * @throws NullPointerException if any argument is {@code null}.
      */
     static X509IdentityProvider fromFiles(Path certificate, Path privateKey, String keyAlgorithm) {
         return fromFiles(certificate, privateKey, keyAlgorithm, null, null);
@@ -76,6 +88,9 @@ public interface X509IdentityProvider extends IdentityProvider<X509Identity> {
      * every refresh. The private key is destroyed after each signing.
      *
      * @param password decrypts the key on each refresh; caller retains ownership
+     * @throws NullPointerException if {@code certificate}, {@code privateKey},
+     *         or {@code keyAlgorithm} is {@code null}. {@link SdkClientException}
+     *         is thrown from {@link #resolve()} on load/parse failure.
      */
     static X509IdentityProvider fromFiles(Path certificate, Path privateKey, String keyAlgorithm, char[] password) {
         return fromFiles(certificate, privateKey, keyAlgorithm, null, password);
@@ -83,6 +98,10 @@ public interface X509IdentityProvider extends IdentityProvider<X509Identity> {
 
     /**
      * File-on-disk provider with an explicit intermediate chain file.
+     *
+     * @throws NullPointerException if {@code certificate}, {@code privateKey},
+     *         or {@code keyAlgorithm} is {@code null}. {@link SdkClientException}
+     *         is thrown from {@link #resolve()} on load/parse failure.
      */
     static X509IdentityProvider fromFiles(
             Path certificate, Path privateKey, String keyAlgorithm, Path certificateChain) {
@@ -92,6 +111,11 @@ public interface X509IdentityProvider extends IdentityProvider<X509Identity> {
     /**
      * File-on-disk provider with an explicit intermediate chain file and an
      * encrypted PKCS#8 private key.
+     *
+     * @throws NullPointerException if {@code certificate}, {@code privateKey},
+     *         or {@code keyAlgorithm} is {@code null}. The returned provider's
+     *         {@link #resolve()} throws {@link SdkClientException} if the
+     *         certificate, private key, or chain cannot be read or parsed.
      */
     static X509IdentityProvider fromFiles(
             Path certificate, Path privateKey, String keyAlgorithm, Path certificateChain, char[] password) {
@@ -120,6 +144,8 @@ public interface X509IdentityProvider extends IdentityProvider<X509Identity> {
      * the identity is embedded and never rotates. The private key is
      * <em>not</em> destroyed after signing, so it remains valid across every
      * refresh.
+     *
+     * @throws NullPointerException if {@code identity} is {@code null}.
      */
     static X509IdentityProvider ofStatic(X509Identity identity) {
         Objects.requireNonNull(identity, "identity");

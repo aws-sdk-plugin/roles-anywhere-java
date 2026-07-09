@@ -30,6 +30,10 @@ public final class RolesAnywherePlugin implements SdkPlugin {
      * provider the customer already configured on the client. The customer's
      * provider is tried first, ours is the fallback — plugins should add
      * capability, not silently overwrite explicit configuration.
+     *
+     * @throws IllegalStateException if {@code config} is not an
+     *         {@link AwsServiceClientConfiguration.Builder} (i.e. the plugin
+     *         was applied to a non-AWS SDK service client).
      */
     @Override
     public void configureClient(SdkServiceClientConfiguration.Builder config) {
@@ -52,6 +56,8 @@ public final class RolesAnywherePlugin implements SdkPlugin {
      * Create a plugin from a pre-built credentials provider. Use this when you
      * already hold a provider (e.g. shared across multiple SDK clients). For
      * fresh construction, use {@link #builder()}.
+     *
+     * @throws IllegalArgumentException if {@code provider} is {@code null}.
      */
     public static RolesAnywherePlugin create(RolesAnywhereCredentialsProvider provider) {
         ValidationUtils.requireParameter(provider, "RolesAnywhereCredentialsProvider");
@@ -167,6 +173,16 @@ public final class RolesAnywherePlugin implements SdkPlugin {
             return this;
         }
 
+        /**
+         * Builds the plugin. Delegates validation to
+         * {@link RolesAnywhereCredentialsProvider.Builder#build()}.
+         *
+         * @throws IllegalArgumentException if any required setter
+         *         ({@link #identityProvider}, {@link #trustAnchorArn},
+         *         {@link #profileArn}, {@link #roleArn}) was not called, if the
+         *         region cannot be resolved, or if {@code durationSeconds} is
+         *         outside the range accepted by IAM Roles Anywhere.
+         */
         public RolesAnywherePlugin build() {
             return new RolesAnywherePlugin(providerBuilder.build());
         }
