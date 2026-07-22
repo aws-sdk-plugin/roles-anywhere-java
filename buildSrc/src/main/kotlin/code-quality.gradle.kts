@@ -55,11 +55,36 @@ checkstyle {
 // Compares the current jar against a previously-published baseline pulled from
 // Maven Central and fails the build on any breaking change to the public /
 // protected member surface. The baseline coordinate is
-// "${project.group}:${archivesBaseName}:${apiBaselineVersion}" — set
-// `apiBaselineVersion` in gradle.properties or on the CLI once the first
-// version has been published; the check is skipped when unset so pre-1.0.0
-// builds still pass.
-val apiBaselineVersion: String? = findProperty("apiBaselineVersion") as String?
+// "${project.group}:${archivesName}:${apiBaselineVersion}".
+//
+// Baseline resolution:
+//   1. Explicit `-PapiBaselineVersion=x.y.z` (or a value in gradle.properties)
+//      wins. Use this to pin the diff to a specific release, or pass an empty
+//      value to disable the gate for a single build.
+//   2. Otherwise, fall back to the most recent `v<currentMajor>.*` git tag
+//      (stripping the `v`). SemVer major bumps are allowed to break the API,
+//      so the gate deliberately only compares against tags in the current
+//      major line. Bumping `project.version` from `1.x` to `2.0.0` before any
+//      `v2.*` tag exists therefore drops the gate for that release — the
+//      following `2.x` PR picks it back up automatically.
+//   3. If neither is available (fresh clone with no tags, or first release of
+//      a new major), the task is not registered and the build passes.
+val apiBaselineVersion: String? = run {
+    val explicit = findProperty("apiBaselineVersion") as String?
+    if (explicit != null) return@run explicit.ifEmpty { null }
+    val currentMajor = project.version.toString().substringBefore('.').toIntOrNull()
+        ?: return@run null
+    // `git describe` returns non-zero (typically 128) when no tag matches the
+    // pattern — the first release of a new major, or a fresh clone with no
+    // tags. Route through the `result` provider so we can inspect exit code
+    // without throwing (and without invalidating the configuration cache).
+    val describe = providers.exec {
+        commandLine("git", "describe", "--tags", "--abbrev=0", "--match", "v$currentMajor.*")
+        isIgnoreExitValue = true
+    }
+    if (describe.result.get().exitValue != 0) return@run null
+    describe.standardOutput.asText.get().trim().removePrefix("v").ifEmpty { null }
+}
 
 if (apiBaselineVersion != null) {
     val baselineArtifact = configurations.detachedConfiguration(

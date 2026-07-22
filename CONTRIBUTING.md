@@ -95,18 +95,26 @@ git-cliff --tag v1.0.0 --output CHANGELOG.md
 ## Public API Compatibility
 
 Breaking changes to the plugin's public/protected member surface are detected
-by [japicmp](https://siom79.github.io/japicmp/) when the `apiBaselineVersion`
-Gradle property is set. The `checkApiCompatibility` task fetches the named
-version from Maven Central, diffs it against the current jar, and fails on any
-binary-incompatible change. The task is hooked into `check` and runs as part
-of `./gradlew build`.
+by [japicmp](https://siom79.github.io/japicmp/). The `checkApiCompatibility`
+task fetches a baseline jar from Maven Central, diffs it against the current
+jar, and fails on any binary-incompatible change. It is hooked into `check`
+and runs as part of `./gradlew build` (locally and in CI).
 
-- Locally: `./gradlew build -PapiBaselineVersion=<last-released-version>`
-- CI (`.github/workflows/gradle.yml`): the same flag is passed to `./gradlew build`.
+The baseline version is resolved in this order:
 
-Once a version is published, bump the value passed on the command line (or set
-it as a repository variable) to that release. The check is skipped when the
-property is unset so pre-1.0.0 builds keep passing.
+1. `-PapiBaselineVersion=<x.y.z>` on the command line or in `gradle.properties`
+   (use this to pin the diff to a specific release).
+2. The most recent `v<currentMajor>.*` git tag, with the `v` stripped. This
+   is the default — cutting a new release tag automatically enrolls the
+   following PR in the compatibility gate. Because the tag filter is scoped
+   to the current major (derived from `project.version`), bumping to a new
+   major intentionally drops the gate until the first `v<newMajor>.*` tag
+   exists, so breaking changes shipped under a major bump don't fail the
+   build.
+3. If neither is set (fresh clone with no matching tags, or first release of
+   a new major), the task is not registered and the build passes.
+
+To disable temporarily: `-PapiBaselineVersion=` (empty value).
 
 
 ## Automated Tools
