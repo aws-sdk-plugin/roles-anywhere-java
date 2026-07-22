@@ -13,6 +13,7 @@ checkstyle-tool = "10.18.2"
 spotless-plugin = "8.8.0"
 errorprone-plugin = "4.1.0"
 spotbugs-plugin = "6.1.2"
+japicmp-plugin = "0.4.6"
 
 [libraries]
 # AWS SDK — BOM manages versions for the rest, only awssdk-bom needs a version
@@ -39,3 +40,4 @@ errorprone-core = { module = "com.google.errorprone:error_prone_core", version.r
 spotless-plugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless-plugin" }
 errorprone-plugin = { module = "net.ltgt.gradle:gradle-errorprone-plugin", version.ref = "errorprone-plugin" }
 spotbugs-plugin = { module = "com.github.spotbugs.snom:spotbugs-gradle-plugin", version.ref = "spotbugs-plugin" }
+japicmp-plugin = { module = "me.champeau.gradle:japicmp-gradle-plugin", version.ref = "japicmp-plugin" }

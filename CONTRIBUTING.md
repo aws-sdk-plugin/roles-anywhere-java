@@ -92,6 +92,23 @@ git-cliff --tag v1.0.0 --output CHANGELOG.md
 ```
 
 
+## Public API Compatibility
+
+Breaking changes to the plugin's public/protected member surface are detected
+by [japicmp](https://siom79.github.io/japicmp/) when the `apiBaselineVersion`
+Gradle property is set. The `checkApiCompatibility` task fetches the named
+version from Maven Central, diffs it against the current jar, and fails on any
+binary-incompatible change. The task is hooked into `check` and runs as part
+of `./gradlew build`.
+
+- Locally: `./gradlew build -PapiBaselineVersion=<last-released-version>`
+- CI (`.github/workflows/gradle.yml`): the same flag is passed to `./gradlew build`.
+
+Once a version is published, bump the value passed on the command line (or set
+it as a repository variable) to that release. The check is skipped when the
+property is unset so pre-1.0.0 builds keep passing.
+
+
 ## Automated Tools
 
 The use of AI tooling for assisted development work is accepted and encouraged
