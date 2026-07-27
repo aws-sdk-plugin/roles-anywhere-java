@@ -42,30 +42,45 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 ## Pre-commit secret scanning
 
-CI blocks any PR that introduces an AWS credential or other well-known
-secret pattern (see `.github/workflows/git-secrets.yml`). Catch these
-before you push by installing [`git-secrets`][gs] and enabling its hooks
-in your local clone:
+CI runs two independent secret scanners on every push and pull request:
+
+- [`git-secrets`][gs] with the AWS provider pattern set
+  (`.github/workflows/git-secrets.yml`) — catches AWS access keys and
+  secret keys.
+- [`gitleaks`][gl] with the default ruleset
+  (`.github/workflows/gitleaks.yml`) — catches ~150 additional token
+  classes (GitHub, Slack, Stripe, private key blocks, JWTs, etc.).
+
+Either scanner failing blocks the PR. Catch issues before push by
+installing both locally.
 
 ```sh
 # macOS
-brew install git-secrets
+brew install git-secrets gitleaks
 
-# Linux
+# Linux — git-secrets
 git clone --depth 1 https://github.com/awslabs/git-secrets.git
 sudo make -C git-secrets install
 
-# Inside your clone of this repo
+# Linux — gitleaks: download the latest release binary from
+# https://github.com/gitleaks/gitleaks/releases and place it on your PATH.
+```
+
+Enable `git-secrets` hooks and run one-shot scans in your clone:
+
+```sh
 git secrets --install
 git secrets --register-aws
+git secrets --scan-history
+gitleaks detect --source . --log-opts="--all"
 ```
 
 `git secrets --install` writes `pre-commit`, `commit-msg`, and
 `prepare-commit-msg` hooks that scan staged content against the AWS
-patterns (and any custom patterns you add). `git secrets --scan` and
-`git secrets --scan-history` run the same check on demand.
+patterns. `gitleaks detect` scans the full working tree and history.
 
 [gs]: https://github.com/awslabs/git-secrets
+[gl]: https://github.com/gitleaks/gitleaks
 
 
 ## Conventional Commits and CHANGELOG.md
