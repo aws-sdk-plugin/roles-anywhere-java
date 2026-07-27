@@ -1,0 +1,16 @@
+# Extends gitleaks' default ruleset.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test fixtures under src/test/ hold deliberately-committed key material and constants exercised by the plugin's unit tests. Nothing under this path is a real credential."
+paths = [
+    '''src/test/.*''',
+]
+
+[[allowlists]]
+description = "Java method parameter list `PrivateKey privateKey, X509Certificate ...` in X509Signer.java triggers gitleaks' generic-api-key rule on the `privateKey` identifier bigram. Not a secret."
+regexTarget = "match"
+regexes = [
+    '''PrivateKey privateKey, X509Certificate''',
+]
