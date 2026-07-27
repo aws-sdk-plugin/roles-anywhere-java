@@ -9,6 +9,12 @@ on:
 permissions:
   contents: read
 
+env:
+  GITLEAKS_VERSION: "8.30.1"
+  # SHA-256 of gitleaks_<version>_linux_x64.tar.gz published on the release page.
+  # Update together with GITLEAKS_VERSION.
+  GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -17,6 +23,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install gitleaks (pinned + checksum-verified)
+        run: |
+          set -euo pipefail
+          asset="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$asset" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${asset}"
+          echo "${GITLEAKS_SHA256}  ${asset}" | sha256sum -c -
+          sudo tar -xzf "$asset" -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan full history
+        run: gitleaks git . --log-opts=--all --redact
