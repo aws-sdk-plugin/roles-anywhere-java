@@ -26,8 +26,16 @@ jobs:
       # Produces the four Maven-shaped files the release-account integ
       # Lambda expects as one sibling set (see IntegHandler#processRecord):
       # <baseName>.jar / -sources.jar / -javadoc.jar / .pom.
+      #
+      # TODO(post-v1.0.0): drop `-PapiBaselineVersion=`. The japicmp
+      # public-API compat check tries to resolve the baseline coord from
+      # Maven Central, but on the FIRST release there's nothing there to
+      # resolve against and the build fails. Empty value disables the
+      # gate for this run only; subsequent releases will find v1.0.0 on
+      # Central and re-arm the check automatically. See CONTRIBUTING.md
+      # § "Public API Compatibility" for the disable flag.
       - name: Build artifacts
-        run: ./gradlew build generatePomFileForMavenJavaPublication
+        run: ./gradlew build generatePomFileForMavenJavaPublication -PapiBaselineVersion=
 
       # gradle.properties' archivesBaseName key is unwired decoration — the
       # actual jar name is rootProject.name + version (settings.gradle.kts).
