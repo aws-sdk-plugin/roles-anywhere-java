@@ -1,0 +1,70 @@
+name: release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      # Produces the four Maven-shaped files the release-account integ
+      # Lambda expects as one sibling set (see IntegHandler#processRecord):
+      # <baseName>.jar / -sources.jar / -javadoc.jar / .pom.
+      - name: Build artifacts
+        run: ./gradlew build generatePomFileForMavenJavaPublication
+
+      # gradle.properties' archivesBaseName key is unwired decoration — the
+      # actual jar name is rootProject.name + version (settings.gradle.kts).
+      # Derive it from the built primary jar so this can't drift out of sync.
+      - name: Resolve coordinate base name
+        id: coord
+        run: |
+          set -euo pipefail
+          PRIMARY_JAR=""
+          for f in build/libs/*.jar; do
+            case "$f" in
+              *-sources.jar|*-javadoc.jar) continue ;;
+              *) PRIMARY_JAR="$f" ;;
+            esac
+          done
+          BASE_NAME="$(basename "${PRIMARY_JAR}" .jar)"
+          echo "base_name=${BASE_NAME}" >> "$GITHUB_OUTPUT"
+
+      # Trust policy on this role only accepts refs/heads/main and
+      # refs/tags/v* (UPLOAD_ALLOWED_REFS in PublicReleaseInfraStack) — a
+      # merge to any other branch fails AssumeRoleWithWebIdentity here.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: arn:aws:iam::187494036543:role/iamra-java-release-github-upload-role-prod-pdx
+          aws-region: us-west-2
+
+      # .pom PUT is the atomic trigger for the integ Lambda (S3 ObjectCreated
+      # on *.pom) — upload it last so the other three siblings already exist
+      # when the Lambda's HeadObject sibling check runs.
+      - name: Upload coordinate to staging bucket
+        env:
+          BASE_NAME: ${{ steps.coord.outputs.base_name }}
+        run: |
+          set -euo pipefail
+          BUCKET="iamra-java-release-staging-prod-pdx"
+          aws s3 cp "build/libs/${BASE_NAME}.jar"          "s3://${BUCKET}/${BASE_NAME}.jar"
+          aws s3 cp "build/libs/${BASE_NAME}-sources.jar"  "s3://${BUCKET}/${BASE_NAME}-sources.jar"
+          aws s3 cp "build/libs/${BASE_NAME}-javadoc.jar"  "s3://${BUCKET}/${BASE_NAME}-javadoc.jar"
+          aws s3 cp "build/publications/mavenJava/pom-default.xml" "s3://${BUCKET}/${BASE_NAME}.pom"
