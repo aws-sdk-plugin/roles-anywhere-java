@@ -4,7 +4,13 @@ All notable changes to this project are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-07-30
+
+### CI
+
+- *(release)* Disable japicmp for first-release build (#34)
+
+## [1.0.0] - 2026-07-30
 
 ### Bug Fixes
 
@@ -19,33 +25,27 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 - *(deps)* Bump org.junit.platform:junit-platform-launcher (#7)
 - *(deps)* Bump com.diffplug.spotless:spotless-plugin-gradle (#16)
 - *(deps)* Bump org.junit.jupiter:junit-jupiter from 6.1.0 to 6.1.1 (#13)
-- Produce byte-identical JARs for reproducible builds
+- *(api-compat)* Enforce public API stability with japicmp (#30)
+- *(deps)* Bump actions/checkout from 7.0.0 to 7.0.1 (#27)
+- *(deps)* Bump actions/setup-java from 5.5.0 to 5.6.0 (#28)
+- *(deps)* Bump actions/checkout from 7.0.0 to 7.0.1 (#32)
 
 ### CI
 
 - Add Dependabot for automated dependency updates
-- Add git-secrets scan on push and pull_request
+- Add gitleaks scan alongside git-secrets (#31)
 
 ### Documentation
 
-- *(build)* Correct stale Java 11 floor comment to Java 8
-- *(plugin)* Move createDefaultHttpClient() Javadoc to its method
-- *(contributing)* Document local git-secrets setup
-- Generate CHANGELOG.md from commit log via git-cliff
-- *(plugin)* Document throws contract on public API methods
+- *(contributing)* Add Automated Tools AI-use policy (#29)
 
 ### Features
 
 - Add Java source implementation for IAM Roles Anywhere credentials
+- Add release workflow for v* tag → S3 staging upload (#33)
 
 ### Refactor
 
 - *(plugin)* Harden review surface for first publish (#22)
-
-### Tests
-
-- *(plugin)* Suppress unchecked warning on IdentityProvider mock
-- *(plugin)* Use Assumptions.assumeTrue for missing cert skip
-- *(plugin)* Use assertNotEquals for resolveVersion fallback check
 
 
