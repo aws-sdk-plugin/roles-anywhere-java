@@ -30,6 +30,11 @@ class CreateSessionRequestBuilderTest {
     private static final Arn PROFILE_ARN = Arn.fromString(PROFILE_ARN_STRING);
     private static final Arn ROLE_ARN = Arn.fromString(ROLE_ARN_STRING);
 
+    private static final String TRUST_ANCHOR_ALIAS_ARN_STRING =
+            "arn:aws:rolesanywhere:us-east-1:123456789012:alias/trust-anchor/team/prod";
+    private static final String PROFILE_ALIAS_ARN_STRING =
+            "arn:aws:rolesanywhere:us-east-1:123456789012:alias/profile/web-servers";
+
     private static final String ROLE_SESSION_NAME = "test-session";
     private static final Integer DURATION_SECONDS = 3600;
 
@@ -119,6 +124,41 @@ class CreateSessionRequestBuilderTest {
         assertTrue(requestBody.contains("\"roleArn\""));
         assertTrue(requestBody.contains("\"roleSessionName\":\"" + ROLE_SESSION_NAME + "\""));
         assertTrue(requestBody.contains("\"durationSeconds\":" + DURATION_SECONDS));
+    }
+
+    @Test
+    void testBuildWithAliasArns() throws IOException {
+        CreateSessionRequestBuilder builder = new CreateSessionRequestBuilder(Region.US_EAST_1)
+                .trustAnchorArn(TRUST_ANCHOR_ALIAS_ARN_STRING)
+                .profileArn(PROFILE_ALIAS_ARN_STRING)
+                .roleArn(ROLE_ARN_STRING);
+
+        SdkHttpFullRequest request = builder.build();
+
+        String requestBody = readRequestBody(request);
+        assertTrue(requestBody.contains("\"trustAnchorArn\":\"" + TRUST_ANCHOR_ALIAS_ARN_STRING + "\""));
+        assertTrue(requestBody.contains("\"profileArn\":\"" + PROFILE_ALIAS_ARN_STRING + "\""));
+        assertTrue(requestBody.contains("\"roleArn\":\"" + ROLE_ARN_STRING + "\""));
+    }
+
+    @Test
+    void testBuildWithMismatchedAliasArnType() {
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> new CreateSessionRequestBuilder(Region.US_EAST_1).profileArn(TRUST_ANCHOR_ALIAS_ARN_STRING));
+        assertEquals(
+                "Invalid profile alias ARN. Expected: "
+                        + "arn:<partition>:rolesanywhere:<region>:<account>:alias/profile/<alias-name>"
+                        + ", but got: " + TRUST_ANCHOR_ALIAS_ARN_STRING,
+                exception.getMessage());
+    }
+
+    @Test
+    void testBuildWithEmptyAliasName() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new CreateSessionRequestBuilder(Region.US_EAST_1)
+                        .trustAnchorArn("arn:aws:rolesanywhere:us-east-1:123456789012:alias/trust-anchor/"));
     }
 
     @Test
