@@ -304,7 +304,8 @@ public class RolesAnywhereCredentialsProviderTest {
                         .build());
         assertEquals(
                 "Expected: "
-                        + "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>, "
+                        + "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>"
+                        + " or arn:<partition>:rolesanywhere:<region>:<account>:alias/trust-anchor/<alias-name>, "
                         + "but got: invalid-arn",
                 exception1.getMessage());
 
@@ -320,7 +321,9 @@ public class RolesAnywhereCredentialsProviderTest {
                         .build());
         assertEquals(
                 "Expected: "
-                        + "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>, but got: invalid-arn",
+                        + "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>"
+                        + " or arn:<partition>:rolesanywhere:<region>:<account>:alias/profile/<alias-name>, "
+                        + "but got: invalid-arn",
                 exception2.getMessage());
 
         // Test invalid role ARN

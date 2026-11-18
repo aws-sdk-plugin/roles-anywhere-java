@@ -9,6 +9,10 @@ import software.amazon.awssdk.arns.Arn;
 /**
  * Utility class for validating ARNs used in IAM Roles Anywhere operations.
  * This class provides validation for trust anchor, profile, and role ARNs.
+ *
+ * <p>Trust anchor and profile ARNs may be given in canonical form
+ * ({@code arn:<partition>:rolesanywhere:<region>:<account>:<type>/<id>}) or as an alias ARN
+ * ({@code arn:<partition>:rolesanywhere:<region>:<account>:alias/<type>/<alias-name>}).
  */
 @SdkInternalApi
 final class ArnValidator {
@@ -19,15 +23,20 @@ final class ArnValidator {
     private static final String TRUST_ANCHOR_RESOURCE_TYPE = "trust-anchor";
     private static final String PROFILE_RESOURCE_TYPE = "profile";
     private static final String ROLE_RESOURCE_TYPE = "role";
+    private static final String ALIAS_SEGMENT = "alias";
     private static final Map<String, String> RESOURCE_TYPES;
 
     static {
         Map<String, String> m = new HashMap<>();
         m.put(
                 TRUST_ANCHOR_RESOURCE_TYPE,
-                "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>");
+                "arn:<partition>:rolesanywhere:<region>:<account>:trust-anchor/<trust-anchor-id>"
+                        + " or arn:<partition>:rolesanywhere:<region>:<account>:alias/trust-anchor/<alias-name>");
         m.put(ROLE_RESOURCE_TYPE, "arn:<partition>:iam::<account>:role/<role-name>");
-        m.put(PROFILE_RESOURCE_TYPE, "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>");
+        m.put(
+                PROFILE_RESOURCE_TYPE,
+                "arn:<partition>:rolesanywhere:<region>:<account>:profile/<profile-id>"
+                        + " or arn:<partition>:rolesanywhere:<region>:<account>:alias/profile/<alias-name>");
         RESOURCE_TYPES = Collections.unmodifiableMap(m);
     }
 
@@ -36,7 +45,7 @@ final class ArnValidator {
     }
 
     /**
-     * Parses and validates a trust anchor ARN.
+     * Parses and validates a trust anchor ARN, in canonical or alias form.
      *
      * @param arnString The ARN string to validate
      * @return The parsed and validated Arn object
@@ -47,7 +56,7 @@ final class ArnValidator {
     }
 
     /**
-     * Parses and validates a profile ARN.
+     * Parses and validates a profile ARN, in canonical or alias form.
      *
      * @param arnString The ARN string to validate
      * @return The parsed and validated Arn object
@@ -97,6 +106,19 @@ final class ArnValidator {
 
         if (!expectedService.equals(arn.service())) {
             throw new IllegalArgumentException("Invalid " + resourceType + " ARN service, got: " + arn.service());
+        }
+
+        if (!ROLE_RESOURCE_TYPE.equals(resourceType)
+                && arn.resource().resourceType().filter(ALIAS_SEGMENT::equals).isPresent()) {
+            String prefix = ALIAS_SEGMENT + "/" + resourceType + "/";
+            String resource = arn.resourceAsString();
+            if (!resource.startsWith(prefix) || resource.length() == prefix.length()) {
+                String formats = RESOURCE_TYPES.get(resourceType);
+                String aliasFormat = formats.substring(formats.lastIndexOf(" or ") + " or ".length());
+                throw new IllegalArgumentException(
+                        "Invalid " + resourceType + " alias ARN. Expected: " + aliasFormat + ", but got: " + arn);
+            }
+            return arn;
         }
 
         if (!arn.resource().resourceType().isPresent()
