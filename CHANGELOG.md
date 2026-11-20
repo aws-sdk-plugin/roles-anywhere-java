@@ -4,13 +4,22 @@ All notable changes to this project are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [1.0.0] - 2026-07-30
+## [1.1.0] - 2026-11-19
 
-### CI
+### Build
 
-- *(release)* Disable japicmp for first-release build (#34)
+- *(deps)* Bump actions/setup-java from 5.6.0 to 6.0.1 (#41)
+- *(deps)* Bump aws-actions/configure-aws-credentials (#42)
 
-## [1.0.0] - 2026-07-30
+### Documentation
+
+- *(changelog)* V1.0.0 (#35)
+
+### Features
+
+- Accept alias ARNs for trust anchor and profile
+
+## [1.0.0] - 2026-07-29
 
 ### Bug Fixes
 
@@ -34,6 +43,7 @@ this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Add Dependabot for automated dependency updates
 - Add gitleaks scan alongside git-secrets (#31)
+- *(release)* Disable japicmp for first-release build (#34)
 
 ### Documentation
 
